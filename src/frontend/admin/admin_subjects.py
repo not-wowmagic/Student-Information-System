@@ -1,5 +1,14 @@
 import tkinter as tk
 from tkinter import ttk as tkttk
+from ttkbootstrap.widgets import ToastNotification
+
+from backend.backend import create_new_subject
+from frontend.components.fields import Fields
+from frontend.components.form import Form
+from ttkbootstrap.tableview import Tableview
+from ttkbootstrap.constants import PRIMARY
+from database.crud.subjects import get_subjects
+from database.db_utils import find_by_column
 
 NAV_BG        = "#001f5b"
 WHITE         = "#ffffff"
@@ -7,7 +16,7 @@ TEXT_PRIMARY  = "#111827"
 TEXT_MUTED    = "#6b7280"
 CARD_BORDER   = "#e2e8f0"
 
-def build_subjects_list_tab(parent, switch_cb):
+def build_subjects_list_tab(parent, switch_cb, conn):
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
@@ -21,79 +30,194 @@ def build_subjects_list_tab(parent, switch_cb):
 
     tk.Frame(container, bg=CARD_BORDER, height=1).pack(fill="x", padx=48, pady=16)
 
-    # Search / Filter Bar
-    filter_f = tk.Frame(container, bg=WHITE)
-    filter_f.pack(fill="x", padx=48, pady=(0, 16))
-    
-    search_bg = tk.Frame(filter_f, bg="#f4f4f5", height=40)
-    search_bg.pack(side="left", fill="x", expand=True, padx=(0, 16))
-    search_bg.pack_propagate(False)
-    e_search = tk.Entry(search_bg, font=("Segoe UI", 10), bg="#f4f4f5", fg=TEXT_PRIMARY, relief="flat", bd=0)
-    e_search.pack(fill="both", expand=True, padx=16, pady=8)
-    e_search.insert(0, "Search by course code or title...")
+    # ── Fetch data ──
+    subjects = get_subjects(conn)
 
-    btn_search = tk.Button(filter_f, text="Search", font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=4, cursor="hand2")
-    btn_search.pack(side="left")
+    coldata = [
+        {"text": "Course Code",   "stretch": True},
+        {"text": "Course Title",  "stretch": True},
+        {"text": "Course",        "stretch": True},
+        {"text": "Teacher",       "stretch": True},
+        {"text": "Units",         "stretch": True},
+        {"text": "Day",           "stretch": True},
+        {"text": "Start Time",    "stretch": True},
+        {"text": "End Time",      "stretch": True},
+    ]
 
-    # Table
-    table_f = tk.Frame(container, bg=WHITE, highlightthickness=1, highlightbackground=CARD_BORDER)
-    table_f.pack(fill="both", expand=True, padx=48, pady=(0, 48))
+    rowdata = []
+    for subject in subjects:
+        # subject_id, subject_name, subject_code, teacher, course_id, units, scheduled_day, start_time, end_time
+        subject_name  = subject[1]
+        subject_code  = subject[2]
+        year_level    = subject[3]
+        teacher       = subject[4]
+        course_id     = subject[5]
+        units         = subject[6]
+        scheduled_day = subject[7]
+        start_time    = subject[8]
+        end_time      = subject[9]
 
-    cols = ("code", "title", "units", "dept", "status")
-    tree = tkttk.Treeview(table_f, columns=cols, show="headings", height=15)
-    
-    tree.heading("code", text="Course Code")
-    tree.heading("title", text="Course Title")
-    tree.heading("units", text="Units")
-    tree.heading("dept", text="Department")
-    tree.heading("status", text="Status")
-    
-    tree.column("code", width=100)
-    tree.column("title", width=300)
-    tree.column("units", width=50, anchor="center")
-    tree.column("dept", width=150)
-    tree.column("status", width=100, anchor="center")
-    
-    tree.pack(fill="both", expand=True)
-    
-    # No data — will be populated by database
+        # Convert course_id → course_name
+        course_data = find_by_column(conn, "COURSES", "course_id", course_id)
+        course_name = course_data[1] if course_data else "Unknown"
+
+        rowdata.append((subject_code, subject_name, course_name, teacher, units, scheduled_day, start_time, end_time))
+
+    # ── Tableview ──
+    style = tkttk.Style()
+    style.configure("Treeview", rowheight=40)
+
+    table = Tableview(
+        master=container,
+        coldata=coldata,
+        rowdata=rowdata,
+        paginated=True,
+        searchable=True,
+        bootstyle=PRIMARY,
+        pagesize=15,
+        height=15,
+        autofit=True,
+        disable_right_click=True
+    )
+    table.pack(fill="both", expand=True, padx=48, pady=(0, 48))
 
 
-def build_add_subject_tab(parent, switch_cb):
-    container = tk.Frame(parent, bg=WHITE)
-    container.pack(fill="both", expand=True)
+def build_add_subject_tab(parent, switch_cb, conn):
+    # Main container
+    tab_container = tk.Frame(parent, bg=WHITE)
+    tab_container.pack(fill="both", expand=True)
 
-    tk.Label(container, text="Add New Subject", font=("Georgia", 24), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(48, 16), padx=120)
-    tk.Frame(container, bg=CARD_BORDER, height=1).pack(fill="x", padx=120, pady=16)
+    container_content = tk.Frame(tab_container, bg=WHITE)
+    container_content.pack(fill="both", expand=True, padx=40, pady=(34, 0))
 
-    form = tk.Frame(container, bg=WHITE)
-    form.pack(fill="both", expand=True, padx=120)
+    tk.Label(container_content, text="Add New Subject", font=("Georgia", 24), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="center")
 
-    def _make_field(parent_frame, label_text, placeholder):
-        f = tk.Frame(parent_frame, bg=WHITE)
-        f.pack(fill="x", pady=(0, 24))
-        tk.Label(f, text=label_text, font=("Segoe UI", 9, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 8))
-        inner = tk.Frame(f, bg="#f4f4f5", height=48)
-        inner.pack(fill="x"); inner.pack_propagate(False)
-        e = tk.Entry(inner, font=("Segoe UI", 10), bg="#f4f4f5", fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
-        e.pack(fill="both", expand=True, padx=16, pady=12)
-        e.insert(0, placeholder)
+    rows_config = [
+        (0, 1),
+        (0, 2),
+        (0, 2),
+        (0, 1),
+        (0, 1),
+        (0, 2)
+    ]
 
-    _make_field(form, "Course Code", "e.g. CS 101")
-    _make_field(form, "Course Title", "e.g. Introduction to Computing")
-    _make_field(form, "Units", "e.g. 3")
-    _make_field(form, "Department", "e.g. BS Information Technology")
+    class SubjectForm(Form):
+        def onSubmit(self):
+            course_code = course_code_field.get_input()
+            course_title = course_title_field.get_input()
+            year_level: str = year_level_field.get_input()
+            teacher = teachers_field.get_input()
+            units = course_units_field.get_input()
+            department = department_field.get_input()
+            scheduled_day = scheduled_day_field.get_input()
+            start_time = start_time_field.get_input()
+            end_time = end_time_field.get_input()
 
-    def show_notification(e=None):
-        notif = tk.Frame(container, bg="#10b981", highlightthickness=0)
-        notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-        tk.Label(notif, text="✓ Subject added successfully", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#10b981", padx=16, pady=12).pack()
-        container.after(3000, notif.destroy)
-        switch_cb("Subjects List")
+            # ── Validation ──
+            if not course_code or course_code == "e.g CS 101":
+                print("no course code!")
+                return
 
-    footer = tk.Frame(form, bg=WHITE)
-    footer.pack(fill="x", pady=(32, 0))
-    btn_add = tk.Button(footer, text="Save Subject", font=("Segoe UI", 10, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=32, pady=8, cursor="hand2", command=show_notification)
-    btn_add.pack(side="left")
-    btn_cancel = tk.Button(footer, text="Cancel", font=("Segoe UI", 10, "bold"), fg=NAV_BG, bg=WHITE, relief="solid", bd=1, padx=32, pady=8, cursor="hand2", command=lambda: switch_cb("Subjects List"))
-    btn_cancel.pack(side="left", padx=(16, 0))
+            if not course_title or course_title == "e.g Introduction to Computing":
+                print("no course title!")
+                return
+
+            if not teacher or teacher == "e.g John Christian Lorr":
+                print("no teacher!")
+                return
+
+            if not units or units == "e.g 3":
+                print("no units!")
+                return
+
+            if not scheduled_day:
+                print("no scheduled day!")
+                return
+
+            if not start_time or start_time == "eg. 7:00 AM":
+                print("no start time!")
+                return
+
+            if not end_time or end_time == "eg. 12:00 PM":
+                print("no end time!")
+                return
+
+            subject_data = [
+                course_code,
+                course_title,
+                int(year_level[0]),
+                teacher,
+                department,
+                float(units),  # units is REAL in DB
+                scheduled_day,
+                start_time,
+                end_time
+            ]
+
+            is_sucess, error = create_new_subject(conn, subject_data)
+
+            if is_sucess:
+                toast = ToastNotification(
+                    title="Successfully Added.",
+                    message=f"Subject {course_title} has been added to the database",
+                    duration=5000,
+                    bootstyle="success"
+                )
+                toast.show_toast()
+                switch_cb("Subjects List")
+            else:
+                toast = ToastNotification(
+                    title="Failed to create a subject",
+                    message=error,
+                    duration=5000,
+                    bootstyle="danger"
+                )
+                toast.show_toast()
+                switch_cb("Subjects List")
+
+
+
+    subject_form = SubjectForm(container_content, rows_config)
+
+    row_1_frame = subject_form._get_rows_field(0)
+    course_code_field = Fields(row_1_frame, "entry", column_index=0, field_label_text="Course Code",
+                              placeholder_text="e.g CS 101" )
+
+    row_2_frame = subject_form._get_rows_field(1)
+    course_title_field = Fields(row_2_frame, "entry", column_index=0, field_label_text="Course Title",
+                               placeholder_text="e.g Introduction to Computing")
+    year_level_field = Fields(row_2_frame, "combo_box", column_index=1,
+                              field_label_text="Year Level",
+                              options=["1st year", "2nd year", "3rd year", "4th year"])
+
+    row_3_frame = subject_form._get_rows_field(2)
+    teachers_field = Fields(row_3_frame, "entry", column_index=0, field_label_text="Proffesor Name",
+                               placeholder_text="e.g John Christian Lorr")
+    course_units_field = Fields(row_3_frame, "entry", column_index=1, field_label_text="Units",
+                               placeholder_text="e.g 3")
+
+    row_4_frame = subject_form._get_rows_field(3)
+    department_field = Fields(row_4_frame, "combo_box", column_index=0,field_label_text="Course",
+                    options=['BS Information Technology',
+                    'BS Computer Science',
+                    'BS Hospital Management',
+                    'BS Education',
+                    'BS Business Administration',
+                    'BS Psychology'])
+
+    row_5_frame = subject_form._get_rows_field(4)
+
+    # Day of the week
+    scheduled_day_field = Fields(row_5_frame, "combo_box", column_index=0,
+                                 field_label_text="Day",
+                                 options=["Monday", "Tuesday", "Wednesday",
+                                          "Thursday", "Friday", "Saturday"])
+
+
+    row_6_frame = subject_form._get_rows_field(5)
+    start_time_field = Fields(row_6_frame, "entry", column_index=0,
+                              field_label_text="Start Time", placeholder_text="eg. 7:00 AM")
+
+    # End time
+    end_time_field = Fields(row_6_frame, "entry", column_index=1,
+                            field_label_text="End Time", placeholder_text="eg. 12:00 PM")

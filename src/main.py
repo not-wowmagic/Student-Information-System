@@ -3,6 +3,7 @@ import sys
 
 import ttkbootstrap
 
+
 # If this file is executed as a script (e.g., `python src/main.py`), Python adds
 # `src/` (not the project root) to sys.path, so `import src...` fails.
 if __package__ in (None, ""):
@@ -14,13 +15,16 @@ from constants import CUSTOM_BACKGROUND_COLOR
 from src.database.db_config import connect_db
 
 def main() -> None:
+        from ttkbootstrap import Window
+
+        window = Window()
+        import tkinter as tk
+        window.withdraw()
 
         from src.frontend.login.login import open_login_window
         from src.frontend.student.dashboard import open_dashboard_window
         from frontend.admin.admin_dashboard import open_admin_dashboard
-        from ttkbootstrap import Window
 
-        window = Window()
 
         # INITIALIZE DATABASE
         conn = connect_db()
@@ -32,7 +36,8 @@ def main() -> None:
         window.style.configure("BG_CHECKBOX.TCheckbutton", background=CUSTOM_BACKGROUND_COLOR)
         window.style.configure("BG_ENTRY.TEntry", background=CUSTOM_BACKGROUND_COLOR)
         window.style.configure("BG_LABEL.TLabel", background=CUSTOM_BACKGROUND_COLOR, foreground="white")
-        window.withdraw()
+        window.style.configure("White.TFrame", background="white")
+
 
         def on_logout(win):
                 open_login_window(win, conn, on_login_success=on_login_success)

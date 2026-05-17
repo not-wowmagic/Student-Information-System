@@ -30,9 +30,6 @@ def open_login_window(window, conn, on_login_success):
         if len(password) > 0 and (len(password))< 4:
             password_error_label.config(text="Password must have at least 4 characters!")
             return False
-        if not any(c.isupper() for c in password):
-            password_error_label.config(text="Password must have at least 1 uppercase letter!")
-            return False
         if not any(c.islower() for c in password):
             password_error_label.config(text="Password must have at least 1 lowercase letter!")
             return False
@@ -59,7 +56,7 @@ def open_login_window(window, conn, on_login_success):
             return
 
         is_user_exist = validate_auth(conn, username, password)
-
+        print(is_user_exist)
         if not is_user_exist:
             user_error_label.config(text="Invalid Username or Password")
             password_error_label.config(text="Invalid Username or Password")
@@ -246,7 +243,7 @@ def open_login_window(window, conn, on_login_success):
 
     tk.Label(
         form,
-        text=f"Demo — user: 25-0000  |  pass: Demo@Cleven12!",
+        text=f"Demo — user: 25-0000  |  pass: demo10@plv.edu.ph",
         font=(FONT_DEFAULT_NAME, 8),
         fg="#aaaaaa",
         bg="white",

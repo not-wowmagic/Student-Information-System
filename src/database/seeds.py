@@ -1,15 +1,42 @@
-courses = (
-    ('BSIT',),
-    ('BSCS',),
-    ('BSHM',),
-    ('BSED',),
-    ('BSBA',)
-)
+from backend.backend import create_new_students
+from database.crud.students import enroll_student, sync_all_students_for_new_subject
 
+departments = [
+    ("College of Information Technology",),
+    ("College of Business",),
+    ("College of Education",),
+    ("College of Hospitality Management",),
+    ("College of Psychology",),
+]
+
+courses = [
+    ("BS Information Technology", 1),
+    ("BS Computer Science",       1),
+    ("BS Business Administration", 2),
+    ("BS Education",              3),
+    ("BS Hospital Management",    4),
+    ("BS Psychology",             5),
+]
 
 admin = [('admin', 'Admin@Admin123')]
-student = [('25-0000', "Cleven", "Castillo", 'Demo@Cleven12!', 1)]
-subjects = [('Introduction to Intermediate Programming', 'CC3', 'John Christian Lorr', 1, 0.00, 3)]
+
+student = (
+    '25-0000',
+    "Castillo, Cleven, R.",
+    1,        # course_id
+    1,        # year_level
+    "demo10@plv.edu.ph",
+    "09123456789",
+    "789 Oak Lane, Suite 100",
+    "Active",
+    "2026-05-17",
+)
+
+# subject_name, subject_code, teacher, course_id, year_level, units, scheduled_day, start_time, end_time
+subjects = [
+    ('Introduction to Intermediate Programming', 'CC3', 'John Christian Lorr', 1, 1, 3, "Monday", "7:00 AM", "12:00 PM")
+    #                                                                              ↑ year_level added
+]
 
 def is_already_seeded(conn):
     cursor = conn.cursor()
@@ -22,46 +49,55 @@ def pre_seed_db(conn):
         print("Already seeded, skipping...")
         return
 
-
     print("Seeding Started...")
     try:
-        print("Seeding..")
-        with conn:
-            # courses
-            cursor = conn.cursor()
-            query = """
-                INSERT OR IGNORE  INTO COURSES (course_name) VALUES (?)
-            """
-            cursor.executemany(query, courses)
-            conn.commit()
+        cursor = conn.cursor()
 
-            # admin
-            query = """
-                        INSERT  OR IGNORE  INTO ADMIN (username, password) VALUES (?, ?)
-                    """
-            cursor.executemany(query, admin)
-            conn.commit()
+        # 1. Seed departments first
+        cursor.executemany("""
+            INSERT OR IGNORE INTO DEPARTMENT (department_name)
+            VALUES (?)
+        """, departments)
 
-            # students
-            query = """
-                INSERT  OR IGNORE  INTO STUDENTS(student_id, first_name, last_name, password, course_id ) VALUES (?, ?, ?, ?, ?)
-            """
-            cursor.executemany(query, student)
-            conn.commit()
+        # 2. Seed courses
+        cursor.executemany("""
+            INSERT OR IGNORE INTO COURSES (course_name, department_id)
+            VALUES (?, ?)
+        """, courses)
 
-            #  subject_id INTEGER PRIMARY KEY AUTOINCREMENT,
-            #  subject_name TEXT NOT NULL,
-            #  subject_code TEXT NOT NULL,
-            #  teacher TEXT NOT NULL,
-            #  course_id TEXT NOT NULL
-            #  gwa REAL,
-            #  units REAL,
+        # 3. Seed admin
+        cursor.executemany("""
+            INSERT OR IGNORE INTO ADMIN (username, password)
+            VALUES (?, ?)
+        """, admin)
 
-            # subjects
-            query = """
-                INSERT  OR IGNORE  INTO SUBJECTS(subject_name, subject_code, teacher, course_id, gwa, units) VALUES (?, ?, ?, ?, ?, ?)
-            """
-            cursor.executemany(query, subjects)
-            conn.commit()
+        # 4. Seed subjects (with year_level)
+        cursor.executemany("""
+            INSERT OR IGNORE INTO SUBJECTS (
+                subject_name, subject_code, teacher,
+                course_id, year_level, units,
+                scheduled_day, start_time, end_time
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, subjects)
+
+        conn.commit()
+
+        # 5. Seed student (uses create_new_students which handles bcrypt)
+        create_new_students(conn, student, mock=True)
+
+        # 6. Enroll seeded student in matching subjects
+        enroll_student(conn, student[0], student[2], student[3])
+
+        # 7. Sync any existing students for new subjects
+        cursor.execute("SELECT subject_id FROM SUBJECTS")
+        all_subjects = cursor.fetchall()
+        for subj in all_subjects:
+            sync_all_students_for_new_subject(conn, subj[0])
+
+        conn.commit()
+
+    except Exception as e:
+        print(f"Seeding error: {e}")
     finally:
-        print("Seeding Sucessfully.")
+        print("Seeding Successfully.")

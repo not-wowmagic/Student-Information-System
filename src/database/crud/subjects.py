@@ -7,18 +7,34 @@ def add_subject(conn, subject_data):
             cursor = conn.cursor()
 
             query = """
-                INSERT INTO SUBJECTS
-                (subject_id, subject_name, instructor)
-                VALUES (?, ?, ?)
+                INSERT INTO SUBJECTS (
+                    subject_name,
+                    subject_code,
+                    year_level,
+                    teacher,
+                    course_id,
+                    units,
+                    scheduled_day,
+                    start_time,
+                    end_time
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """
 
             cursor.execute(query, subject_data)
             conn.commit()
 
-            print("Subject added!")
+        return (True, "Success!")
 
+    except sqlite3.IntegrityError as e:
+        print(f"Error: {e}")
+        return (False, "Duplicate Key")
+    except sqlite3.SQLITE_CONSTRAINT_UNIQUE as e:
+        print("Error:", e)
+        return (False, "You cannot make a subject, the subject code or subject name is unique")
     except sqlite3.Error as e:
         print("Error:", e)
+        return (False, "something error has occured, Please contact the dev")
 
 
 # READ SUBJECTS
@@ -26,11 +42,7 @@ def get_subjects(conn):
     try:
         with conn:
             cursor = conn.cursor()
-
-            query = "SELECT * FROM SUBJECTS"
-
-            cursor.execute(query)
-
+            cursor.execute("SELECT * FROM SUBJECTS")
             return cursor.fetchall()
 
     except sqlite3.Error as e:

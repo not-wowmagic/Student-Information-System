@@ -1,7 +1,22 @@
 import os
 import tkinter as tk
 from tkinter import ttk as tkttk
+from ttkbootstrap import Separator
+from ttkbootstrap.tableview import Tableview
+from ttkbootstrap.constants import PRIMARY
+from database.crud.students import get_students
+from database.db_utils import find_by_column
 
+
+from backend.backend import create_new_students
+from frontend.admin.admin_grade_subjects import build_student_grades_tab
+from frontend.components.form import Form, RowField
+from src.frontend.components.fields import Fields
+from ttkbootstrap import Frame
+from ttkbootstrap.widgets.scrolled import ScrolledFrame
+from ttkbootstrap.toast import ToastNotification
+
+from constants import FONT_DEFAULT_NAME
 from icon_utils import apply_window_icon
 
 from frontend.admin.admin_dashboard_home import build_dashboard_tab
@@ -177,54 +192,45 @@ def _dept_bar(parent, dept_name, count, total):
         relx=0, rely=0, relheight=1, relwidth=fill_w)
 
 # ── VIEW BUILDERS ────────────────────────────────────────────────────────────
-def build_dashboard_tab(parent, switch_cb):
-    # ── STAT CARDS ────────────────────────────────────────────────────────────
+def build_dashboard_tab(parent, switch_cb, conn):
+    # ── Fetch data ──
+    from database.crud.students import get_students
+    from database.db_utils import find_by_column
+
+    students = get_students(conn)
+    total     = len(students)
+    active    = len([s for s in students if s[7] == "Active"])
+    inactive  = len([s for s in students if s[7] == "Inactive"])
+
+    # ── STAT CARDS ──
     cards_row = tk.Frame(parent, bg=CONTENT_BG)
     cards_row.pack(fill="x", padx=24, pady=(22, 16))
 
-    total_students = ""
-    active_students = ""
-    inactive_students = ""
+    _stat_card(cards_row, "Total Students",    str(total),    None, "👥")
+    _stat_card(cards_row, "Active Students",   str(active),   None, "✅")
+    _stat_card(cards_row, "Inactive Students", str(inactive), None, "🚫")
 
-    _stat_card(cards_row, "Total Students",    total_students, None,
-               "👥")
-    _stat_card(cards_row, "Active Students",   active_students,
-               None,
-               "✅")
-    _stat_card(cards_row, "Inactive Students", inactive_students,
-               None,
-               "🚫")
-
-    # ── LOWER ROW ─────────────────────────────────────────────────────────────
+    # ── LOWER ROW ──
     lower = tk.Frame(parent, bg=CONTENT_BG)
     lower.pack(fill="both", expand=True, padx=24, pady=(0, 24))
 
-    # ── STUDENTS TABLE (dark navy card) ───────────────────────────────────────
-    table_card = tk.Frame(lower, bg=TABLE_OUTER,
-                          highlightthickness=0, bd=0)
+    # ── STUDENTS TABLE ──
+    table_card = tk.Frame(lower, bg=TABLE_OUTER, highlightthickness=0, bd=0)
     table_card.pack(side="left", fill="both", expand=True, padx=(0, 16))
 
     tk.Label(table_card, text="Students", font=("Segoe UI", 12, "bold"),
-             fg=WHITE, bg=TABLE_OUTER, anchor="w").pack(anchor="w",
-                                                        padx=16, pady=(14, 10))
+             fg=WHITE, bg=TABLE_OUTER, anchor="w").pack(anchor="w", padx=16, pady=(14, 10))
 
-    # Table inner area (light grey)
-    tree_holder = tk.Frame(table_card, bg="#c8cdd8",
-                           highlightthickness=0, bd=0)
+    tree_holder = tk.Frame(table_card, bg="#c8cdd8", highlightthickness=0, bd=0)
     tree_holder.pack(fill="both", expand=True, padx=10, pady=(0, 14))
 
     style = tkttk.Style()
     style.configure("FigmaTree.Treeview",
-                    background="#d8dde8",
-                    foreground=TEXT_PRIMARY,
-                    fieldbackground="#d8dde8",
-                    rowheight=28,
-                    font=("Segoe UI", 10))
+                    background="#d8dde8", foreground=TEXT_PRIMARY,
+                    fieldbackground="#d8dde8", rowheight=28, font=("Segoe UI", 10))
     style.configure("FigmaTree.Treeview.Heading",
-                    background="#c0c6d4",
-                    foreground=TEXT_PRIMARY,
-                    font=("Segoe UI", 10, "bold"),
-                    relief="flat")
+                    background="#c0c6d4", foreground=TEXT_PRIMARY,
+                    font=("Segoe UI", 10, "bold"), relief="flat")
     style.map("FigmaTree.Treeview",
               background=[("selected", "#a0b4d0")],
               foreground=[("selected", TEXT_PRIMARY)])
@@ -243,41 +249,44 @@ def build_dashboard_tab(parent, switch_cb):
     tree.column("course", width=200, anchor="center", minwidth=130)
     tree.column("year",   width=70,  anchor="center", minwidth=50)
 
-    # No data — will be populated by database
-    pass
+    # ── Populate tree ──
+    for s in students:
+        student_id = s[0]
+        full_name  = s[1]
+        course_id  = s[2]
+        year_level = s[3]
 
-    # Double click opens student profile
+        course_data = find_by_column(conn, "COURSES", "course_id", course_id)
+        course_name = course_data[1] if course_data else "Unknown"
+
+        tree.insert("", "end", values=(student_id, full_name, course_name, year_level))
+
     tree.bind("<Double-1>", lambda e: switch_cb("Student Profile"))
 
-    tree_vsb = tkttk.Scrollbar(tree_holder, orient="vertical",
-                                command=tree.yview)
+    tree_vsb = tkttk.Scrollbar(tree_holder, orient="vertical", command=tree.yview)
     tree.configure(yscrollcommand=tree_vsb.set)
     tree.pack(side="left", fill="both", expand=True)
     tree_vsb.pack(side="right", fill="y")
 
-    # ── RIGHT PANEL ───────────────────────────────────────────────────────────
+    # ── RIGHT PANEL ──
     right_panel = tk.Frame(lower, bg=CONTENT_BG, width=290)
     right_panel.pack(side="left", fill="both")
     right_panel.pack_propagate(False)
 
-    # Campus image card
-    campus_h = 130
-    campus_frame = tk.Frame(right_panel, bg="#0d2447", height=campus_h)
+    # Campus card
+    campus_frame = tk.Frame(right_panel, bg="#0d2447", height=130)
     campus_frame.pack(fill="x", pady=(0, 14))
     campus_frame.pack_propagate(False)
-
     campus_overlay = tk.Frame(campus_frame, bg="#0d2447")
     campus_overlay.place(relx=0, rely=0, relwidth=1, relheight=1)
-    tk.Label(campus_overlay, text="",
+    tk.Label(campus_overlay, text="Enchong Dee University",
              font=("Segoe UI", 11, "bold"), fg=WHITE, bg="#0d2447",
-             anchor="w", wraplength=260, justify="left").pack(anchor="w",
-                                                              padx=16, pady=(24, 4))
-    tk.Label(campus_overlay,
-             text="",
+             anchor="w", wraplength=260, justify="left").pack(anchor="w", padx=16, pady=(24, 4))
+    tk.Label(campus_overlay, text="Student Information System",
              font=("Segoe UI", 9), fg="#aab4c8", bg="#0d2447",
              anchor="w", wraplength=260, justify="left").pack(anchor="w", padx=16)
 
-    # Department Load card
+    # ── Department Load card ──
     dept_outer = tk.Frame(right_panel, bg=CARD_BORDER)
     dept_outer.pack(fill="x")
     dept_white = tk.Frame(dept_outer, bg=WHITE)
@@ -288,8 +297,16 @@ def build_dashboard_tab(parent, switch_cb):
     tk.Label(dept_pad, text="Department Load", font=("Segoe UI", 11, "bold"),
              fg=TEXT_PRIMARY, bg=WHITE, anchor="w").pack(anchor="w", pady=(0, 8))
 
-    # No data — will be populated by database
-    pass
+    # Count students per course
+    course_counts = {}
+    for s in students:
+        course_id   = s[2]
+        course_data = find_by_column(conn, "COURSES", "course_id", course_id)
+        course_name = course_data[1] if course_data else "Unknown"
+        course_counts[course_name] = course_counts.get(course_name, 0) + 1
+
+    for course_name, count in course_counts.items():
+        _dept_bar(dept_pad, course_name, count, total)
 
     tk.Button(dept_pad, text="View Full Analytics",
               font=("Segoe UI", 10), fg=TEXT_PRIMARY, bg=WHITE,
@@ -302,61 +319,61 @@ def build_student_profile_tab(parent, switch_cb):
     bc.pack(fill="x", padx=24, pady=(16, 10))
     tk.Label(bc, text="Student Profile", font=("Segoe UI", 12, "bold"),
              fg=TEXT_PRIMARY, bg=CONTENT_BG).pack(side="left")
-    
+
     # 2 columns layout
     cols = tk.Frame(parent, bg=CONTENT_BG)
     cols.pack(fill="both", expand=True, padx=24, pady=(0, 24))
-    
+
     # LEFT COLUMN (Profile Summary)
     left_col = tk.Frame(cols, bg=CARD_BORDER, width=320)
     left_col.pack(side="left", fill="y", padx=(0, 16))
     left_col.pack_propagate(False)
-    
+
     left_inner = tk.Frame(left_col, bg=CARD_BG)
     left_inner.pack(padx=1, pady=1, fill="both", expand=True)
-    
+
     # Avatar
     avatar_wrap = tk.Frame(left_inner, bg=CARD_BG, pady=24)
     avatar_wrap.pack(fill="x")
     avatar = tk.Label(avatar_wrap, text="👤", font=("Segoe UI Emoji", 48), fg="#cbd5e1", bg="#f1f5f9", width=3, height=1)
     avatar.pack(pady=10)
-    
+
     tk.Label(left_inner, text="", font=("Segoe UI", 16, "bold"), fg=NAV_BG, bg=CARD_BG).pack()
     tk.Label(left_inner, text="", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=CARD_BG).pack()
-    
+
     # Badges
     badges = tk.Frame(left_inner, bg=CARD_BG)
     badges.pack(pady=12)
     tk.Label(badges, text="Enrolled", font=("Segoe UI", 9, "bold"), fg="#16a34a", bg="#dcfce7", padx=8, pady=2).pack(side="left", padx=4)
     tk.Label(badges, text="Freshman Year", font=("Segoe UI", 9, "bold"), fg=TEXT_MUTED, bg="#f1f5f9", padx=8, pady=2).pack(side="left", padx=4)
-    
+
     # Details
     det = tk.Frame(left_inner, bg=CARD_BG)
     det.pack(fill="x", padx=24, pady=16)
-    
+
     def _detail_row(p, label, val):
         r = tk.Frame(p, bg=CARD_BG)
         r.pack(fill="x", pady=6)
         tk.Label(r, text=label, font=("Segoe UI", 9, "bold"), fg=TEXT_MUTED, bg=CARD_BG).pack(side="left")
         tk.Label(r, text=val, font=("Segoe UI", 10), fg=TEXT_PRIMARY, bg=CARD_BG).pack(side="right")
-        
+
     _detail_row(det, "Student ID", "")
     _detail_row(det, "Admission Date", "")
     _detail_row(det, "Email Address", "")
     _detail_row(det, "Phone", "")
-    
+
     # Bottom Academic Summary Card
     acad = tk.Frame(left_inner, bg=NAV_BG)
     acad.pack(fill="x", side="bottom", padx=16, pady=16)
     tk.Label(acad, text="Academic Summary", font=("Segoe UI", 9), fg=WHITE, bg=NAV_BG).pack(anchor="w", padx=12, pady=(12, 4))
-    
+
     acad_grid = tk.Frame(acad, bg=NAV_BG)
     acad_grid.pack(fill="x", padx=12, pady=(0, 12))
     grade = tk.Frame(acad_grid, bg="#1a3a7a")
     grade.pack(side="left", fill="both", expand=True, padx=(0, 4))
     tk.Label(grade, text="Grade", font=("Segoe UI", 8), fg="#aab4c8", bg="#1a3a7a").pack(anchor="w", padx=8, pady=(8, 0))
     tk.Label(grade, text="", font=("Segoe UI", 16, "bold"), fg=WHITE, bg="#1a3a7a").pack(anchor="w", padx=8, pady=(0, 8))
-    
+
     cred = tk.Frame(acad_grid, bg="#1a3a7a")
     cred.pack(side="right", fill="both", expand=True, padx=(4, 0))
     tk.Label(cred, text="Credits", font=("Segoe UI", 8), fg="#aab4c8", bg="#1a3a7a").pack(anchor="w", padx=8, pady=(8, 0))
@@ -365,28 +382,28 @@ def build_student_profile_tab(parent, switch_cb):
     # RIGHT COLUMN
     right_col = tk.Frame(cols, bg=CARD_BORDER)
     right_col.pack(side="left", fill="both", expand=True)
-    
+
     right_inner = tk.Frame(right_col, bg=CARD_BG)
     right_inner.pack(padx=1, pady=1, fill="both", expand=True)
-    
+
     # Tabs inside right col
     tab_hdr = tk.Frame(right_inner, bg="#f8fafc")
     tab_hdr.pack(fill="x")
     tk.Label(tab_hdr, text="Academic Info", font=("Segoe UI", 10, "bold"), fg=NAV_BG, bg=CARD_BG, padx=16, pady=12).pack(side="left")
     tk.Frame(tab_hdr, bg=CARD_BORDER, height=1).pack(side="bottom", fill="x")
-    
+
     content = tk.Frame(right_inner, bg=CARD_BG)
     content.pack(fill="both", expand=True, padx=24, pady=24)
-    
+
     row1 = tk.Frame(content, bg=CARD_BG)
     row1.pack(fill="x")
-    
+
     maj_card = tk.Frame(row1, bg="#f8fafc", highlightthickness=1, highlightbackground=CARD_BORDER, bd=0)
     maj_card.pack(side="left", fill="both", expand=True, padx=(0, 8))
     tk.Label(maj_card, text="PRIMARY MAJOR", font=("Segoe UI", 8, "bold"), fg=NAV_BG, bg="#f8fafc").pack(anchor="w", padx=16, pady=(16, 4))
     tk.Label(maj_card, text="School of Engineering", font=("Segoe UI", 11, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w", padx=16)
     tk.Label(maj_card, text="Computer Science Concentration", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w", padx=16, pady=(0, 16))
-    
+
     adv_card = tk.Frame(row1, bg="#f8fafc", highlightthickness=1, highlightbackground=CARD_BORDER, bd=0)
     adv_card.pack(side="right", fill="both", expand=True, padx=(8, 0))
     tk.Label(adv_card, text="ACADEMIC ADVISOR", font=("Segoe UI", 8, "bold"), fg=NAV_BG, bg="#f8fafc").pack(anchor="w", padx=16, pady=(16, 4))
@@ -397,9 +414,9 @@ def build_student_profile_tab(parent, switch_cb):
     a_t.pack(side="left")
     tk.Label(a_t, text="Mr. John Christian Lor, MSIT", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w")
     tk.Label(a_t, text="Senior Professor", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w")
-    
+
     tk.Label(content, text="SCHOLARSHIPS & HONORS", font=("Segoe UI", 9, "bold"), fg=NAV_BG, bg=CARD_BG).pack(anchor="w", pady=(32, 8))
-    
+
     schol = tk.Frame(content, bg=CARD_BG, highlightthickness=1, highlightbackground=CARD_BORDER, bd=0)
     schol.pack(fill="x", ipady=40)
     # Dashed effect simulated with a flat border for now
@@ -410,315 +427,607 @@ def build_student_profile_tab(parent, switch_cb):
     # Buttons bottom
     btm = tk.Frame(right_inner, bg=CARD_BG)
     btm.pack(fill="x", side="bottom", padx=24, pady=24)
-    
+
     tk.Button(btm, text="← Back to List", font=("Segoe UI", 10), cursor="hand2", command=lambda: switch_cb("Dashboard"),
               bg=WHITE, fg=TEXT_PRIMARY, relief="solid", bd=1, padx=16, pady=6).pack(side="left")
-    
+
     tk.Button(btm, text="✎ Edit Record", font=("Segoe UI", 10, "bold"), cursor="hand2", command=lambda: switch_cb("Edit Student"),
               bg=NAV_BG, fg=WHITE, relief="flat", bd=0, padx=16, pady=6).pack(side="right")
     tk.Button(btm, text="Generate Report", font=("Segoe UI", 10), cursor="hand2",
               bg=WHITE, fg=TEXT_PRIMARY, relief="solid", bd=1, padx=16, pady=6).pack(side="right", padx=12)
 
-def build_add_student_tab(parent, switch_cb):
+
+
+def build_add_student_tab(parent, switch_cb, conn):
     # Main container
-    container = tk.Frame(parent, bg=WHITE)
-    container.pack(fill="both", expand=True)
+    tab_container = tk.Frame(parent, bg=WHITE)
+    tab_container.pack(fill="both", expand=True)
+
+
+    container_content = tk.Frame(tab_container, bg=WHITE)
+    container_content.pack(fill="both", expand=True, padx=40, pady=(34, 0))
 
     # Title
-    tk.Label(container, text="New Student Record", font=("Georgia", 24), fg=TEXT_PRIMARY, bg=WHITE).pack(pady=(48, 32))
+    tk.Label(container_content, text="New Student Record", font=("Georgia", 24), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="center")
 
-    # Form Container
-    form = tk.Frame(container, bg=WHITE)
-    form.pack(fill="both", expand=True, padx=120)
+    rows_config = [
+        (0, 2),
+        (0, 2),
+        (0, 2),
+        (0, 1),
+        (0, 2)
+    ]
 
-    def _make_field(parent_frame, label_text, placeholder, is_dropdown=False, is_date=False):
-        f = tk.Frame(parent_frame, bg=WHITE)
-        f.pack(fill="x", expand=True, padx=16, pady=(0, 24))
-        
-        tk.Label(f, text=label_text, font=("Segoe UI", 9, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 8))
-        
-        input_bg = "#f4f4f5" # light gray
-        inner = tk.Frame(f, bg=input_bg, height=48)
-        inner.pack(fill="x")
-        inner.pack_propagate(False)
-        
-        if is_dropdown:
-            style = tkttk.Style()
-            style.configure("AddStudent.TCombobox", padding=5)
-            cb = tkttk.Combobox(inner, font=("Segoe UI", 10), state="readonly", style="AddStudent.TCombobox")
-            cb.pack(fill="both", expand=True, padx=2, pady=8)
-            cb.set(placeholder)
-            if label_text == "Course":
-                cb['values'] = ["BS Computer Science", "BS Information Technology", "BS Nursing", "BS Education", "BS Accountancy"]
-            elif label_text == "Year Level":
-                cb['values'] = ["1st Year", "2nd Year", "3rd Year", "4th Year"]
-            return cb
-        elif is_date:
-            import ttkbootstrap as tb
-            de = tb.DateEntry(inner)
-            de.pack(fill="both", expand=True, padx=2, pady=8)
-            return de
-        else:
-            e = tk.Entry(inner, font=("Segoe UI", 10), bg=input_bg, fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
-            e.pack(fill="both", expand=True, padx=16, pady=12)
-            e.insert(0, placeholder)
-            return e
+    # student_id TEXT PRIMARY KEY NOT NULL,
+    # full_name TEXT NOT NULL,
+    # course_id INTEGER NOT NULL,
+    # year_level INTEGER NOT NULL,
+    # email_address TEXT NOT NULL,
+    # contact_Number INTEGER NOT NULL,
+    # house_number TEXT NOT NULL,
+    # account_status TEXT NOT NULL,
+    # enrollment_date TEXT, NOT NULL
+    # password TEXT NOT NULL,
 
-    # Row 1
-    r1 = tk.Frame(form, bg=WHITE)
-    r1.pack(fill="x")
-    c1_1 = tk.Frame(r1, bg=WHITE); c1_1.pack(side="left", fill="both", expand=True)
-    c1_2 = tk.Frame(r1, bg=WHITE); c1_2.pack(side="left", fill="both", expand=True)
-    
-    _make_field(c1_1, "Student ID", "26-1234")
-    _make_field(c1_2, "Full name", "Surname, Full name, M.I")
+    class StudentForm(Form):
+        def onSubmit(self):
 
-    # Row 2
-    r2 = tk.Frame(form, bg=WHITE)
-    r2.pack(fill="x")
-    c2_1 = tk.Frame(r2, bg=WHITE); c2_1.pack(side="left", fill="both", expand=True)
-    c2_2 = tk.Frame(r2, bg=WHITE); c2_2.pack(side="left", fill="both", expand=True)
-    
-    _make_field(c2_1, "Course", "Select Course", is_dropdown=True)
-    _make_field(c2_2, "Year Level", "Select Year", is_dropdown=True)
 
-    # Row 3
-    r3 = tk.Frame(form, bg=WHITE)
-    r3.pack(fill="x")
-    c3_1 = tk.Frame(r3, bg=WHITE); c3_1.pack(side="left", fill="both", expand=True)
-    c3_2 = tk.Frame(r3, bg=WHITE); c3_2.pack(side="left", fill="both", expand=True)
-    
-    _make_field(c3_1, "Email Address", "student@university.edu")
-    _make_field(c3_2, "Contact Number", "+63 000 000 0000")
+            student_id = student_id_field.get_input()
+            full_name = full_name_field.get_input()
+            course_text = course_field.get_input()
+            year_level = int(year_level_field.get_input()[0])
+            email_address = email_address_field.get_input()
+            contact_number = contact_number_field.get_input()
+            enrollment_date = enrollment_date_field.get_input()
+            account_status = account_status_field.get_input()
 
-    # Row 4 (Full width)
-    r4 = tk.Frame(form, bg=WHITE)
-    r4.pack(fill="x")
-    _make_field(r4, "Home Address", "House No. , Street, Barangay, City, Province")
+            # ── Optional field ──
+            HOUSE_PLACEHOLDER = "House No., Street, Barangay, City, Province"
+            CONTACT_PLACEHOLDER = "+63 000 000 0000"
 
-    # Row 5 (Status and Date)
-    r5 = tk.Frame(form, bg=WHITE)
-    r5.pack(fill="x")
-    c5_1 = tk.Frame(r5, bg=WHITE); c5_1.pack(side="left", fill="both", expand=True, padx=16)
-    c5_2 = tk.Frame(r5, bg=WHITE); c5_2.pack(side="left", fill="both", expand=True)
-    
-    # Status
-    tk.Label(c5_1, text="Account Status", font=("Segoe UI", 9, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 12))
-    status_f = tk.Frame(c5_1, bg=WHITE)
-    status_f.pack(anchor="w")
-    
-    status_var = tk.StringVar(value="Active")
-    radio_btns = []
-    
-    def _update_radios():
-        for rb in radio_btns:
-            is_sel = (status_var.get() == rb['val'])
-            rb['icon'].config(text="●" if is_sel else "○", fg=NAV_BG if is_sel else "#cbd5e1")
+            raw_house = house_number_field.get_input()
+            house_number = None if (not raw_house or raw_house == HOUSE_PLACEHOLDER) else raw_house
 
-    def _radio(parent_frame, text):
-        f = tk.Frame(parent_frame, bg=WHITE, cursor="hand2")
-        f.pack(side="left", padx=(0, 24))
-        
-        lbl_icon = tk.Label(f, font=("Segoe UI Emoji", 14), bg=WHITE)
-        lbl_icon.pack(side="left")
-        lbl_text = tk.Label(f, text=text, font=("Segoe UI", 9), fg=TEXT_PRIMARY, bg=WHITE)
-        lbl_text.pack(side="left", padx=(4, 0))
-        
-        radio_btns.append({'val': text, 'icon': lbl_icon})
-        
-        def _on_click(e):
-            status_var.set(text)
-            _update_radios()
-            
-        f.bind("<Button-1>", _on_click)
-        lbl_icon.bind("<Button-1>", _on_click)
-        lbl_text.bind("<Button-1>", _on_click)
-    
-    _radio(status_f, "Active")
-    _radio(status_f, "Inactive")
-    _update_radios()
-    
-    _make_field(c5_2, "Enrollment Date", "mm/dd/yy", is_date=True)
+            raw_contact = contact_number_field.get_input()
+            contact_number = None if (not raw_contact or raw_contact == CONTACT_PLACEHOLDER) else raw_contact
 
-    # Notification callback
-    def show_notification(e=None):
-        notif = tk.Frame(container, bg="#10b981", highlightthickness=0)
-        notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-        tk.Label(notif, text="✓ Student record added successfully", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#10b981", padx=16, pady=12).pack()
-        container.after(3000, notif.destroy)
+            student_data = [
+                student_id,
+                full_name,
+                course_text,
+                year_level,
+                email_address,
+                contact_number,
+                house_number,
+                account_status,
+                enrollment_date
+            ]
 
-    # Bottom Buttons
-    footer = tk.Frame(form, bg=WHITE)
-    footer.pack(fill="x", pady=(32, 48), padx=16)
-    
-    btn_add = tk.Button(footer, text="Add Student Record", font=("Segoe UI", 10, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=6, cursor="hand2", command=show_notification)
-    btn_add.pack(side="right")
-    
-    btn_cancel = tk.Button(footer, text="Cancel", font=("Segoe UI", 10, "bold"), fg=NAV_BG, bg=WHITE, relief="solid", bd=1, padx=16, pady=6, cursor="hand2")
-    btn_cancel.pack(side="right", padx=(0, 16))
+            is_sucess, err_message = create_new_students(conn, student_data)
 
-def build_edit_student_tab(parent, switch_cb):
+            if is_sucess:
+                toast = ToastNotification(
+                    title="Sucessfully Added.",
+                    message=f"Student {student_id} has been added to the database",
+                    duration=5000,
+                    bootstyle="success"
+                )
+
+                toast.show_toast()
+
+                switch_cb("Student List")
+                has_submit = True
+            else:
+                toast = ToastNotification(
+                    title="Failed to create a student.",
+                    message=err_message,
+                    duration=5000,
+                    bootstyle="danger"
+                )
+
+                toast.show_toast()
+                switch_cb("Student List")
+                has_submit = True
+
+
+
+
+
+    student_form = StudentForm(container_content, rows_config)
+
+
+    row_1_frame= student_form._get_rows_field(0)
+    student_id_field = Fields(row_1_frame, "entry", column_index=0,field_label_text="Student ID", placeholder_text="e.g 25-2751")
+    full_name_field = Fields(row_1_frame, "entry", column_index=1, field_label_text="Full Name",  placeholder_text="Surname, Full name, M.I")
+
+    row_2_frame = student_form._get_rows_field(1)
+    course_field = Fields(row_2_frame, "combo_box", column_index=0,field_label_text="Course",
+                    options=['BS Information Technology',
+                    'BS Computer Science',
+                    'BS Hospital Management',
+                    'BS Education',
+                    'BS Business Administration',
+                    'BS Psychology'])
+
+    year_level_field = Fields(row_2_frame, "combo_box", column_index=1, field_label_text="Year Level",  options=["1st Year", "2nd Year", "3rd Year", "4th Year"])
+
+    row_3_frame = student_form._get_rows_field(2)
+    email_address_field = Fields(row_3_frame, "entry", column_index=0, field_label_text="Email Address",
+                              placeholder_text="student@university.edu")
+    contact_number_field = Fields(row_3_frame, "entry", column_index=1, field_label_text="Contact",
+                       placeholder_text="+63 000 000 0000")
+
+    row_4_frame = student_form._get_rows_field(3)
+    house_number_field = Fields(row_4_frame, "entry", column_index=0, field_label_text="Home Address",
+                              placeholder_text="House No., Street, Barangay, City, Province")
+
+    row_5_frame = student_form._get_rows_field(4)
+    account_status_field = Fields(row_5_frame, "radio_button", column_index=0, field_label_text="Account Status", options=["Active", "Inactive"])
+    enrollment_date_field = Fields(row_5_frame, "date_entry", column_index=1, field_label_text="Entrollment Date")
+
+
+def build_edit_student_tab(parent, switch_cb, conn):
+    from database.crud.students import search_student, update_student
+    from database.db_utils import find_by_column
+
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
-    # Top Search Bar
+    tk.Label(container, text="Edit Student Record", font=("Georgia", 24),
+             fg=TEXT_PRIMARY, bg=WHITE).pack(pady=(48, 0), padx=48, anchor="w")
+    tk.Label(container, text="Search for a student to edit their record.",
+             font=("Segoe UI", 10), fg=TEXT_MUTED, bg=WHITE).pack(pady=(4, 32), padx=48, anchor="w")
+
+    # ── Search Bar ──
     top_bar = tk.Frame(container, bg=WHITE)
-    top_bar.pack(fill="x", pady=(48, 16), padx=120)
-    
-    tk.Label(top_bar, text="Search Student ID:", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(side="left")
-    
+    top_bar.pack(fill="x", padx=48, pady=(0, 16))
+
+    tk.Label(top_bar, text="Student ID:", font=("Segoe UI", 10, "bold"),
+             fg=TEXT_PRIMARY, bg=WHITE).pack(side="left", padx=(0, 12))
+
     search_f = tk.Frame(top_bar, bg="#f4f4f5", height=40)
-    search_f.pack(side="left", fill="x", expand=True, padx=16)
+    search_f.pack(side="left", fill="x", expand=True, padx=(0, 12))
     search_f.pack_propagate(False)
-    e_search = tk.Entry(search_f, font=("Segoe UI", 10), bg="#f4f4f5", fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
+
+    e_search = tk.Entry(search_f, font=("Segoe UI", 10), bg="#f4f4f5",
+                        fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
     e_search.pack(fill="both", expand=True, padx=16, pady=8)
     e_search.insert(0, "e.g. 26-1234")
-    
-    btn_search = tk.Button(top_bar, text="Search", font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=4, cursor="hand2")
-    btn_search.pack(side="right")
 
-    tk.Frame(container, bg="#e2e8f0", height=1).pack(fill="x", padx=120, pady=16)
+    tk.Frame(container, bg="#e2e8f0", height=1).pack(fill="x", padx=48, pady=(0, 16))
 
-    # Form Container
-    form = tk.Frame(container, bg=WHITE)
-    form.pack(fill="both", expand=True, padx=120)
+    # ── Form area (hidden until search) ──
+    form_container = tk.Frame(container, bg=WHITE)
+    form_container.pack(fill="both", expand=True, padx=48)
 
-    def _make_field(parent_frame, label_text, placeholder, is_dropdown=False):
-        f = tk.Frame(parent_frame, bg=WHITE)
-        f.pack(fill="x", expand=True, padx=16, pady=(0, 24))
-        tk.Label(f, text=label_text, font=("Segoe UI", 9, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 8))
-        input_bg = "#f4f4f5"
-        inner = tk.Frame(f, bg=input_bg, height=48)
-        inner.pack(fill="x")
-        inner.pack_propagate(False)
-        
-        if is_dropdown:
-            style = tkttk.Style()
-            cb = tkttk.Combobox(inner, font=("Segoe UI", 10), state="readonly", style="AddStudent.TCombobox")
-            cb.pack(fill="both", expand=True, padx=2, pady=8)
-            cb.set(placeholder)
-            return cb
-        else:
-            e = tk.Entry(inner, font=("Segoe UI", 10), bg=input_bg, fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
-            e.pack(fill="both", expand=True, padx=16, pady=12)
-            e.insert(0, placeholder)
-            return e
+    found_student = {"data": None}
+    form_fields   = {"built": False}
 
-    # Row 1
-    r1 = tk.Frame(form, bg=WHITE); r1.pack(fill="x")
-    c1_1 = tk.Frame(r1, bg=WHITE); c1_1.pack(side="left", fill="both", expand=True)
-    c1_2 = tk.Frame(r1, bg=WHITE); c1_2.pack(side="left", fill="both", expand=True)
-    _make_field(c1_1, "Student ID", "26-1234")
-    _make_field(c1_2, "Full name", "Surname, Full name, M.I")
+    # These will hold field references after form is built
+    fields = {}
 
-    # Row 2
-    r2 = tk.Frame(form, bg=WHITE); r2.pack(fill="x")
-    c2_1 = tk.Frame(r2, bg=WHITE); c2_1.pack(side="left", fill="both", expand=True)
-    c2_2 = tk.Frame(r2, bg=WHITE); c2_2.pack(side="left", fill="both", expand=True)
-    _make_field(c2_1, "Course", "BS Computer Science", is_dropdown=True)
-    _make_field(c2_2, "Year Level", "1st Year", is_dropdown=True)
+    def build_form(student):
+        # Clear previous form
+        for w in form_container.winfo_children():
+            w.destroy()
 
-    # Row 3 (Full width)
-    r3 = tk.Frame(form, bg=WHITE); r3.pack(fill="x")
-    _make_field(r3, "Email Address", "student@university.edu")
+        course_data = find_by_column(conn, "COURSES", "course_id", student[2])
+        course_name = course_data[1] if course_data else ""
 
-    def show_notification(e=None):
-        notif = tk.Frame(container, bg="#10b981", highlightthickness=0)
-        notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-        tk.Label(notif, text="✓ Changes saved successfully", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#10b981", padx=16, pady=12).pack()
-        container.after(3000, notif.destroy)
+        rows_config = [
+            (0, 2),
+            (0, 2),
+            (0, 2),
+            (0, 1),
+            (0, 2)
+        ]
 
-    # Bottom Buttons
-    footer = tk.Frame(form, bg=WHITE)
-    footer.pack(fill="x", pady=(16, 48), padx=16)
-    btn_add = tk.Button(footer, text="Save Changes", font=("Segoe UI", 10, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=6, cursor="hand2", command=show_notification)
-    btn_add.pack(side="right")
+        class EditForm(Form):
+            def onSubmit(self):
+                new_full_name      = fields["full_name"].get_input()
+                new_course_text    = fields["course"].get_input()
+                new_year_level     = int(fields["year_level"].get_input()[0])
+                new_email          = fields["email"].get_input()
+                new_contact        = fields["contact"].get_input()
+                new_account_status = fields["account_status"].get_input()
 
-def build_remove_student_tab(parent, switch_cb):
+                HOUSE_PLACEHOLDER   = "House No., Street, Barangay, City, Province"
+                CONTACT_PLACEHOLDER = "+63 000 000 0000"
+
+                raw_house    = fields["house"].get_input()
+                new_house    = None if (not raw_house    or raw_house    == HOUSE_PLACEHOLDER)   else raw_house
+                raw_contact2 = fields["contact"].get_input()
+                new_contact  = None if (not raw_contact2 or raw_contact2 == CONTACT_PLACEHOLDER) else raw_contact2
+
+                # Convert course name → course_id
+                course_row = find_by_column(conn, "COURSES", "course_name", new_course_text)
+                new_course_id = course_row[0] if course_row else student[2]
+
+                update_student(conn, student[0], {
+                    "full_name":      new_full_name,
+                    "course_id":      new_course_id,
+                    "year_level":     new_year_level,
+                    "email_address":  new_email,
+                    "contact_number": new_contact,
+                    "house_number":   new_house,
+                    "account_status": new_account_status
+                })
+
+                toast = ToastNotification(
+                    title="Successfully Updated.",
+                    message=f"Student '{student[0]}' has been updated.",
+                    duration=5000,
+                )
+                toast.show_toast()
+                switch_cb("Student List")
+
+        edit_form = EditForm(form_container, rows_config)
+
+        row_1_frame = edit_form._get_rows_field(0)
+        Fields(row_1_frame, "entry", column_index=0,
+               field_label_text="Student ID",
+               placeholder_text=student[0]).entry.config(state="disabled")
+        sid_field = Fields(row_1_frame, "entry", column_index=0,
+                           field_label_text="Student ID",
+                           placeholder_text=student[0])
+        # rebuild properly
+        for w in row_1_frame.winfo_children():
+            w.destroy()
+
+        sid_field   = Fields(row_1_frame, "entry", column_index=0,
+                             field_label_text="Student ID",
+                             placeholder_text=student[0])
+        sid_field.entry.config(state="disabled")
+
+        fields["full_name"] = Fields(row_1_frame, "entry", column_index=1,
+                                     field_label_text="Full Name",
+                                     placeholder_text=student[1])
+
+        row_2_frame = edit_form._get_rows_field(1)
+        fields["course"] = Fields(row_2_frame, "combo_box", column_index=0,
+                                  field_label_text="Course",
+                                  options=['BS Information Technology',
+                                           'BS Computer Science',
+                                           'BS Hospital Management',
+                                           'BS Education',
+                                           'BS Business Administration',
+                                           'BS Psychology'])
+        fields["course"].combo_box.set(course_name)
+
+        fields["year_level"] = Fields(row_2_frame, "combo_box", column_index=1,
+                                      field_label_text="Year Level",
+                                      options=["1st Year", "2nd Year", "3rd Year", "4th Year"])
+        fields["year_level"].combo_box.set(f"{student[3]}{'st' if student[3] == 1 else 'nd' if student[3] == 2 else 'rd' if student[3] == 3 else 'th'} Year")
+
+        row_3_frame = edit_form._get_rows_field(2)
+        fields["email"]   = Fields(row_3_frame, "entry", column_index=0,
+                                   field_label_text="Email Address",
+                                   placeholder_text=student[4])
+        fields["contact"] = Fields(row_3_frame, "entry", column_index=1,
+                                   field_label_text="Contact",
+                                   placeholder_text=student[5] if student[5] else "+63 000 000 0000")
+
+        row_4_frame = edit_form._get_rows_field(3)
+        fields["house"] = Fields(row_4_frame, "entry", column_index=0,
+                                 field_label_text="Home Address",
+                                 placeholder_text=student[6] if student[6] else "House No., Street, Barangay, City, Province")
+
+        row_5_frame = edit_form._get_rows_field(4)
+        fields["account_status"] = Fields(row_5_frame, "radio_button", column_index=0,
+                                          field_label_text="Account Status",
+                                          options=["Active", "Inactive"])
+        fields["account_status"].option_var.set(student[7])
+
+        Fields(row_5_frame, "date_entry", column_index=1,
+               field_label_text="Enrollment Date")
+
+        form_fields["built"] = True
+
+    def do_search():
+        query = e_search.get().strip()
+        if not query or query == "e.g. 26-1234":
+            return
+
+        student = search_student(conn, query)
+        if not student:
+            for w in form_container.winfo_children():
+                w.destroy()
+            tk.Label(form_container, text="Student not found.",
+                     font=("Segoe UI", 12), fg="#e11d48", bg=WHITE).pack(anchor="w")
+            found_student["data"] = None
+            return
+
+        found_student["data"] = student
+        build_form(student)
+
+    btn_search = tk.Button(top_bar, text="Search", font=("Segoe UI", 9, "bold"),
+                           fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=4,
+                           cursor="hand2", command=do_search)
+    btn_search.pack(side="left")
+    e_search.bind("<Return>", lambda e: do_search())
+
+
+
+def build_remove_student_tab(parent, switch_cb, conn):
+    from database.crud.students import search_student, delete_student
+    from database.db_utils import find_by_column
+
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
-    # Top Search Bar
+    tk.Label(container, text="Remove Student", font=("Georgia", 24),
+             fg=TEXT_PRIMARY, bg=WHITE).pack(pady=(48, 0), padx=48, anchor="w")
+    tk.Label(container, text="Search for a student to remove their record permanently.",
+             font=("Segoe UI", 10), fg=TEXT_MUTED, bg=WHITE).pack(pady=(4, 32), padx=48, anchor="w")
+
+    # ── Search Bar ──
     top_bar = tk.Frame(container, bg=WHITE)
-    top_bar.pack(fill="x", pady=(48, 16), padx=120)
-    
-    tk.Label(top_bar, text="Search Student ID:", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(side="left")
-    
+    top_bar.pack(fill="x", padx=48, pady=(0, 16))
+
+    tk.Label(top_bar, text="Student ID:", font=("Segoe UI", 10, "bold"),
+             fg=TEXT_PRIMARY, bg=WHITE).pack(side="left", padx=(0, 12))
+
     search_f = tk.Frame(top_bar, bg="#f4f4f5", height=40)
-    search_f.pack(side="left", fill="x", expand=True, padx=16)
+    search_f.pack(side="left", fill="x", expand=True, padx=(0, 12))
     search_f.pack_propagate(False)
-    e_search = tk.Entry(search_f, font=("Segoe UI", 10), bg="#f4f4f5", fg=TEXT_PRIMARY, relief="flat", bd=0, insertbackground=TEXT_PRIMARY)
+
+    e_search = tk.Entry(search_f, font=("Segoe UI", 10), bg="#f4f4f5",
+                        fg=TEXT_PRIMARY, relief="flat", bd=0,
+                        insertbackground=TEXT_PRIMARY)
     e_search.pack(fill="both", expand=True, padx=16, pady=8)
     e_search.insert(0, "e.g. 26-1234")
-    
-    btn_search = tk.Button(top_bar, text="Search", font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=4, cursor="hand2")
-    btn_search.pack(side="right")
 
-    tk.Frame(container, bg="#e2e8f0", height=1).pack(fill="x", padx=120, pady=16)
+    def _clear_placeholder(e):
+        if e_search.get() == "e.g. 26-1234":
+            e_search.delete(0, "end")
+            e_search.config(fg=TEXT_PRIMARY)
 
-    # Card
-    card = tk.Frame(container, bg="#fff1f2", highlightthickness=1, highlightbackground="#fecdd3")
-    card.pack(fill="x", padx=120, pady=16)
-    
-    inner_card = tk.Frame(card, bg="#fff1f2")
-    inner_card.pack(fill="both", expand=True, padx=32, pady=32)
+    def _restore_placeholder(e):
+        if not e_search.get().strip():
+            e_search.insert(0, "e.g. 26-1234")
+            e_search.config(fg=TEXT_MUTED)
 
-    tk.Label(inner_card, text="Student Found", font=("Segoe UI", 10, "bold"), fg="#e11d48", bg="#fff1f2").pack(anchor="w", pady=(0, 16))
-    tk.Label(inner_card, text="Name: ", font=("Segoe UI", 14), fg=TEXT_PRIMARY, bg="#fff1f2").pack(anchor="w")
-    tk.Label(inner_card, text="Course & Year: ", font=("Segoe UI", 10), fg=TEXT_MUTED, bg="#fff1f2").pack(anchor="w", pady=(4, 16))
-    
-    tk.Label(inner_card, text="Warning: Deleting this student record is irreversible and will remove all associated grades and history.", font=("Segoe UI", 9), fg="#e11d48", bg="#fff1f2").pack(anchor="w", pady=(0, 24))
+    e_search.bind("<FocusIn>",  _clear_placeholder)
+    e_search.bind("<FocusOut>", _restore_placeholder)
 
-    def show_notification(e=None):
-        notif = tk.Frame(container, bg="#e11d48", highlightthickness=0)
-        notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-        tk.Label(notif, text="✓ Student record deleted permanently", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#e11d48", padx=16, pady=12).pack()
-        container.after(3000, notif.destroy)
+    tk.Frame(container, bg="#e2e8f0", height=1).pack(fill="x", padx=48, pady=(0, 24))
 
-    btn_del = tk.Button(inner_card, text="Delete Student Record", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#e11d48", relief="flat", padx=16, pady=6, cursor="hand2", command=show_notification)
-    btn_del.pack(anchor="w")
+    # ── Result card (hidden initially) ──
+    result_card = tk.Frame(container, bg="#fff1f2",
+                           highlightthickness=1,
+                           highlightbackground="#fecdd3")
+    result_card.pack_forget()
 
-def build_search_tab(parent, switch_cb):
+    result_inner = tk.Frame(result_card, bg="#fff1f2")
+    result_inner.pack(fill="both", expand=True, padx=32, pady=24)
+
+    # ── Header row inside card ──
+    card_header = tk.Frame(result_inner, bg="#fff1f2")
+    card_header.pack(fill="x", pady=(0, 16))
+
+    tk.Label(card_header, text="Student Found", font=("Segoe UI", 10, "bold"),
+             fg="#e11d48", bg="#fff1f2").pack(side="left")
+
+    # ── Student info labels ──
+    name_lbl   = tk.Label(result_inner, text="", font=("Segoe UI", 16, "bold"),
+                          fg=TEXT_PRIMARY, bg="#fff1f2")
+    course_lbl = tk.Label(result_inner, text="", font=("Segoe UI", 10),
+                          fg=TEXT_MUTED, bg="#fff1f2")
+    email_lbl  = tk.Label(result_inner, text="", font=("Segoe UI", 10),
+                          fg=TEXT_MUTED, bg="#fff1f2")
+    status_lbl = tk.Label(result_inner, text="", font=("Segoe UI", 10),
+                          fg=TEXT_MUTED, bg="#fff1f2")
+
+    divider = tk.Frame(result_inner, bg="#fecdd3", height=1)
+
+    warning_lbl = tk.Label(result_inner,
+                           text="⚠  Warning: Deleting this record is irreversible and will remove all associated grades and history.",
+                           font=("Segoe UI", 9), fg="#e11d48", bg="#fff1f2",
+                           wraplength=700, justify="left")
+
+    found_student = {"data": None}
+
+    def show_result(student):
+        course_data = find_by_column(conn, "COURSES", "course_id", student[2])
+        course_name = course_data[1] if course_data else "Unknown"
+
+        name_lbl.config(text=f"👤  {student[1]}")
+        course_lbl.config(text=f"Course: {course_name}   |   Year {student[3]}")
+        email_lbl.config(text=f"Email: {student[4]}")
+        status_lbl.config(text=f"Status: {student[7]}")
+
+        name_lbl.pack(anchor="w")
+        course_lbl.pack(anchor="w", pady=(4, 0))
+        email_lbl.pack(anchor="w", pady=(2, 0))
+        status_lbl.pack(anchor="w", pady=(2, 16))
+        divider.pack(fill="x", pady=(0, 16))
+        warning_lbl.pack(anchor="w", pady=(0, 20))
+        btn_del.pack(anchor="w")
+
+        result_card.pack(fill="x", padx=48, pady=(0, 24))
+
+    def hide_result():
+        for w in [name_lbl, course_lbl, email_lbl, status_lbl,
+                  divider, warning_lbl, btn_del]:
+            w.pack_forget()
+        result_card.pack_forget()
+
+    def show_not_found():
+        name_lbl.config(text="❌  No student found with that ID.", fg="#e11d48")
+        course_lbl.config(text="")
+        email_lbl.config(text="")
+        status_lbl.config(text="")
+
+        name_lbl.pack(anchor="w")
+        course_lbl.pack_forget()
+        email_lbl.pack_forget()
+        status_lbl.pack_forget()
+        divider.pack_forget()
+        warning_lbl.pack_forget()
+        btn_del.pack_forget()
+
+        result_card.pack(fill="x", padx=48, pady=(0, 24))
+
+    def do_search():
+        query = e_search.get().strip()
+        if not query or query == "e.g. 26-1234":
+            return
+
+        hide_result()
+
+        student = search_student(conn, query)
+
+        if not student:
+            show_not_found()
+            found_student["data"] = None
+            return
+
+        found_student["data"] = student
+        name_lbl.config(fg=TEXT_PRIMARY)
+        show_result(student)
+
+    def do_delete():
+        student = found_student["data"]
+        if not student:
+            return
+
+        delete_student(conn, student[0])
+
+        hide_result()
+        found_student["data"] = None
+        e_search.delete(0, "end")
+        e_search.insert(0, "e.g. 26-1234")
+        e_search.config(fg=TEXT_MUTED)
+
+        toast = ToastNotification(
+            title="Student Deleted.",
+            message=f"Student '{student[1]}' has been permanently removed.",
+            duration=5000,
+            bootstyle="danger"
+        )
+        toast.show_toast()
+        switch_cb("Student List")
+
+    btn_search = tk.Button(top_bar, text="Search",
+                           font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG,
+                           relief="flat", padx=16, pady=4, cursor="hand2",
+                           command=do_search)
+    btn_search.pack(side="left")
+
+    e_search.bind("<Return>", lambda e: do_search())
+
+    btn_del = tk.Button(result_inner, text="🗑  Delete Student Record",
+                        font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#e11d48",
+                        relief="flat", padx=16, pady=8, cursor="hand2",
+                        command=do_delete)
+
+def build_search_tab(parent, switch_cb, conn):
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
-    tk.Label(container, text="Student Search", font=("Georgia", 24), fg=TEXT_PRIMARY, bg=WHITE).pack(pady=(48, 32), padx=48, anchor="w")
+    tk.Label(container, text="Student Search", font=("Georgia", 24),
+             fg=TEXT_PRIMARY, bg=WHITE).pack(pady=(48, 32), padx=48, anchor="w")
 
+    # ── Filters ──
     filters_f = tk.Frame(container, bg=WHITE)
     filters_f.pack(fill="x", padx=48)
 
     def _make_filter(p, label, opts):
         f = tk.Frame(p, bg=WHITE)
         f.pack(side="left", padx=(0, 24))
-        tk.Label(f, text=label, font=("Segoe UI", 9, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w")
-        style = tkttk.Style()
-        cb = tkttk.Combobox(f, font=("Segoe UI", 10), state="readonly", style="AddStudent.TCombobox", width=20)
-        cb['values'] = opts
+        tk.Label(f, text=label, font=("Segoe UI", 9, "bold"),
+                 fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w")
+        cb = tkttk.Combobox(f, font=("Segoe UI", 10), state="readonly", width=20)
+        cb["values"] = opts
+        cb.set(opts[0])
         cb.pack(pady=4)
-        if opts: cb.set(opts[0])
         return cb
 
-    _make_filter(filters_f, "Course", ["All Courses", "BS Computer Science", "BS Information Technology"])
-    _make_filter(filters_f, "Year Level", ["All Years", "1st Year", "2nd Year", "3rd Year", "4th Year"])
-    _make_filter(filters_f, "Status", ["All", "Active", "Inactive"])
+    course_cb = _make_filter(filters_f, "Course", [
+        "All Courses", "BS Information Technology", "BS Computer Science",
+        "BS Business Administration", "BS Education",
+        "BS Hospital Management", "BS Psychology"
+    ])
+    year_cb   = _make_filter(filters_f, "Year Level", ["All Years", "1", "2", "3", "4"])
+    status_cb = _make_filter(filters_f, "Status", ["All", "Active", "Inactive"])
 
-    btn_search = tk.Button(filters_f, text="Apply Filters", font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG, relief="flat", padx=16, pady=4, cursor="hand2")
-    btn_search.pack(side="left", pady=(16, 0))
+    # ── Fetch students ──
+    students = get_students(conn)
 
-    # Grid
-    grid_f = tk.Frame(container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
-    grid_f.pack(fill="both", expand=True, padx=48, pady=32)
+    coldata = [
+        {"text": "ID",     "stretch": True},
+        {"text": "Name",   "stretch": True},
+        {"text": "Course", "stretch": True},
+        {"text": "Year",   "stretch": True},
+        {"text": "Status", "stretch": True},
+    ]
 
-    cols = ("ID", "Name", "Course", "Year", "Status")
-    tree = tkttk.Treeview(grid_f, columns=cols, show="headings", height=15)
-    for c in cols:
-        tree.heading(c, text=c)
-        tree.column(c, anchor="w", width=150)
-    
-    # No data — will be populated by database
-    pass
-    
-    tree.pack(fill="both", expand=True)
+    def build_rowdata(course_filter="All Courses", year_filter="All Years", status_filter="All"):
+        rows = []
+        for s in students:
+            student_id     = s[0]
+            full_name      = s[1]
+            course_id      = s[2]
+            year_level     = str(s[3])
+            account_status = s[7]
+
+            course_data = find_by_column(conn, "COURSES", "course_id", course_id)
+            course_name = course_data[1] if course_data else "Unknown"
+
+            if course_filter != "All Courses" and course_name != course_filter:
+                continue
+            if year_filter != "All Years" and year_level != year_filter:
+                continue
+            if status_filter != "All" and account_status != status_filter:
+                continue
+
+            rows.append((student_id, full_name, course_name, year_level, account_status))
+        return rows
+
+    # ── Tableview (single one) ──
+    style = tkttk.Style()
+    style.configure("Treeview", rowheight=40)
+
+    table = Tableview(
+        master=container,
+        coldata=coldata,
+        rowdata=build_rowdata(),
+        paginated=True,
+        searchable=True,
+        bootstyle=PRIMARY,
+        pagesize=15,
+        height=15,
+        autofit=True,
+        disable_right_click=True
+    )
+    table.pack(fill="both", expand=True, padx=48, pady=(16, 48))
+
+    # ── Double click → Student Profile ──
+    def on_double_click(event):
+        selected = table.view.selection()
+        if not selected:
+            return
+        values = table.view.item(selected[0])["values"]
+        if values:
+            switch_cb("Student Profile", values[0])
+
+    table.view.bind("<Double-1>", on_double_click)
+
+    # ── Apply filters ──
+    def apply_filters():
+        filtered = build_rowdata(
+            course_cb.get(),
+            year_cb.get(),
+            status_cb.get()
+        )
+        table.build_table_data(coldata, filtered)
+
+    btn_apply = tk.Button(filters_f, text="Apply Filters",
+                          font=("Segoe UI", 9, "bold"), fg=WHITE, bg=NAV_BG,
+                          relief="flat", padx=16, pady=4, cursor="hand2",
+                          command=apply_filters)
+    btn_apply.pack(side="left", pady=(16, 0))
 
 def build_reports_tab(parent, switch_cb):
     container = tk.Frame(parent, bg=WHITE)
@@ -967,54 +1276,57 @@ def open_admin_dashboard(window, conn, on_logout=None):
     # ── TAB SWITCHING LOGIC ───────────────────────────────────────────────────
     current_tab_frame = None
 
-    def switch_tab(tab_name):
+    def switch_tab(tab_name, student_id=None):
         nonlocal current_tab_frame
         if current_tab_frame:
             current_tab_frame.destroy()
-        
+
         main_frame = tk.Frame(content_wrap, bg=CONTENT_BG)
         main_frame.grid(row=0, column=0, sticky="nsew")
         current_tab_frame = main_frame
 
         _set_active_nav(tab_name)
-        
+
         try:
-            if 'topbar_title_lbl' in globals() or 'topbar_title_lbl' in locals() or 'topbar_title_lbl' in win.__dict__:
-                win.topbar_title_lbl.config(text=tab_name)
+            win.topbar_title_lbl.config(text=tab_name)
         except Exception:
             pass
 
         if tab_name == "Dashboard":
-            build_dashboard_tab(main_frame, switch_tab)
+            build_dashboard_tab(main_frame, switch_tab, conn)
         elif tab_name == "Student Profile":
-            build_student_profile_tab(main_frame, switch_tab)
+            build_student_profile_tab(main_frame, switch_tab, conn, student_id)  # ← pass student_id
         elif tab_name == "Student List" or tab_name == "Search":
-            build_search_tab(main_frame, switch_tab)
+            build_search_tab(main_frame, switch_tab, conn)
         elif tab_name == "Add Student":
-            build_add_student_tab(main_frame, switch_tab)
+            build_add_student_tab(main_frame, switch_tab, conn)
         elif tab_name == "Edit Student":
-            build_edit_student_tab(main_frame, switch_tab)
+            build_edit_student_tab(main_frame, switch_tab, conn)
         elif tab_name == "Remove Student" or tab_name == "Remove":
-            build_remove_student_tab(main_frame, switch_tab)
+            build_remove_student_tab(main_frame, switch_tab, conn)
         elif tab_name == "Subjects List":
-            build_subjects_list_tab(main_frame, switch_tab)
+            build_subjects_list_tab(main_frame, switch_tab, conn)
         elif tab_name == "Add Subject":
-            build_add_subject_tab(main_frame, switch_tab)
+            build_add_subject_tab(main_frame, switch_tab, conn)
+        elif tab_name == "Student Grades":
+            build_student_grades_tab(main_frame, switch_tab, conn)
         elif tab_name == "Events List":
-            build_events_list_tab(main_frame, switch_tab)
+            build_events_list_tab(main_frame, switch_tab, conn)
         elif tab_name == "Add Event":
-            build_add_event_tab(main_frame, switch_tab)
+            build_add_event_tab(main_frame, switch_tab, conn)
         elif tab_name == "Announcement List":
-            build_announcements_list_tab(main_frame, switch_tab)
+            build_announcements_list_tab(main_frame, switch_tab, conn)
         elif tab_name == "Add Announcement":
-            build_add_announcement_tab(main_frame, switch_tab)
+            build_add_announcement_tab(main_frame, switch_tab, conn)
         elif tab_name == "Reports":
             build_reports_tab(main_frame, switch_tab)
         elif tab_name == "Settings":
             build_settings_tab(main_frame, switch_tab)
         else:
-            tk.Label(main_frame, text=f"{tab_name}\n(Under Construction)", font=("Segoe UI", 20), fg=TEXT_MUTED, bg=CONTENT_BG, justify="center").pack(expand=True)
-            
+            tk.Label(main_frame, text=f"{tab_name}\n(Under Construction)",
+                     font=("Segoe UI", 20), fg=TEXT_MUTED, bg=CONTENT_BG,
+                     justify="center").pack(expand=True)
+
         win.after(50, lambda: _force_bg(main_frame))
 
     # Initialize buttons
@@ -1029,7 +1341,11 @@ def open_admin_dashboard(window, conn, on_logout=None):
     _section_label(nav, "SUBJECTS")
     btn_sub_list, lbl_sub_list = _make_nav_btn(nav, "Subjects List", "📚", command=lambda: switch_tab("Subjects List"))
     btn_add_sub, lbl_add_sub = _make_nav_btn(nav, "Add Subject", "+", command=lambda: switch_tab("Add Subject"))
-    
+
+    _section_label(nav, "GRADES")
+    btn_grades, lbl_grades = _make_nav_btn(nav, "Student Grades", "📝",
+                                           command=lambda: switch_tab("Student Grades"))
+
     _section_label(nav, "EVENTS")
     btn_ev_list, lbl_ev_list = _make_nav_btn(nav, "Events List", "🎉", command=lambda: switch_tab("Events List"))
     btn_add_ev, lbl_add_ev = _make_nav_btn(nav, "Add Event", "+", command=lambda: switch_tab("Add Event"))
@@ -1091,7 +1407,7 @@ def open_admin_dashboard(window, conn, on_logout=None):
     def do_logout():
         win.destroy()
         if on_logout:
-            on_logout(window)
+            on_logout(win)
 
     for w in (logout_f, lo_inner, lbl_lo_icon, lbl_lo_text):
         w.bind("<Button-1>", lambda e: do_logout())
@@ -1187,14 +1503,29 @@ def open_admin_dashboard(window, conn, on_logout=None):
     # ttkbootstrap's theme engine can override tk widget bg colors.
     # Walk the entire widget tree and re-apply each widget's intended bg.
     def _force_bg(widget):
+        try:
+            if not widget.winfo_exists():
+                return
+        except Exception:
+            return
+
         if hasattr(widget, '_my_bg'):
-            try: widget.configure(bg=widget._my_bg)
-            except Exception: pass
+            try:
+                widget.configure(bg=widget._my_bg)
+            except Exception:
+                pass
+
         if hasattr(widget, '_my_fg'):
-            try: widget.configure(fg=widget._my_fg)
-            except Exception: pass
-        for child in widget.winfo_children():
-            _force_bg(child)
+            try:
+                widget.configure(fg=widget._my_fg)
+            except Exception:
+                pass
+
+        try:
+            for child in widget.winfo_children():
+                _force_bg(child)
+        except Exception:
+            pass
 
     win.update_idletasks()
     
