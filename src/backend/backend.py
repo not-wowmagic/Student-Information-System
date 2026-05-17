@@ -140,13 +140,13 @@ def create_new_subject(conn, subject_data: list):
     # subject_data:
     # [0] subject_code
     # [1] subject_name
-    # [3] year level
-    # [4] teacher
-    # [5] course_name  (will be converted to course_id)
-    # [6] units
-    # [7] scheduled_day
-    # [8] start_time
-    # [9] end_time
+    # [2] year level
+    # [3] teacher
+    # [4] course_name  (will be converted to course_id)
+    # [5] units
+    # [6] scheduled_day
+    # [7] start_time
+    # [8] end_time
 
     subject_code   = subject_data[0]
     subject_name   = subject_data[1]
@@ -159,43 +159,34 @@ def create_new_subject(conn, subject_data: list):
     end_time       = subject_data[8]
 
     if not subject_code:
-        print("no subject code!")
-        return
+        return False, "No subject code!"
 
     if not subject_name:
-        print("no subject name!")
-        return
+        return False, "No subject name!"
 
     if not teacher:
-        print("no teacher!")
-        return
+        return False, "No teacher!"
 
     if not course_text:
-        print("no department!")
-        return
+        return False, "No department!"
 
     if not units:
-        print("no units!")
-        return
+        return False, "No units!"
 
     if not scheduled_day:
-        print("no scheduled day!")
-        return
+        return False, "No scheduled day!"
 
     if not start_time:
-        print("no start time!")
-        return
+        return False, "No start time!"
 
     if not end_time:
-        print("no end time!")
-        return
+        return False, "No end time!"
 
     # convert course_name → course_id
     course_data = find_by_column(conn, "COURSES", "course_name", course_text)
 
     if not course_data:
-        print("no course data found!")
-        return
+        return (False, "No course data found!")
 
     course_id = course_data[0]
 
@@ -211,13 +202,13 @@ def create_new_subject(conn, subject_data: list):
         end_time
     ]
 
-    data =  add_subject(conn, subject_data)
+    data = add_subject(conn, subject_data)
     is_success = data[0]
     err_message = data[1]
-    subject_data =  find_by_column(conn, "SUBJECTS", "subject_name", subject_name)
+    subject_data = find_by_column(conn, "SUBJECTS", "subject_name", subject_name)
     sync_all_students_for_new_subject(conn, subject_data[0])
 
-    return  is_success, err_message
+    return is_success, err_message
 
 def create_new_event(conn, event_data: list):
     # event_data:
