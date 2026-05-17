@@ -46,7 +46,7 @@ tk.Label = ThemedLabel
 
 # ── Colour tokens (from Figma design) ─────────────────────────────────────────
 NAV_BG        = "#001f5b"   # deep navy sidebar / topbar
-NAV_HOVER     = "#1a3a7a"   # hover state
+NAV_HOVER     = NAV_BG      # hover/active state (kept uniform)
 WHITE         = "#ffffff"
 CONTENT_BG    = "#edf0f5"   # light blue-grey page background
 TEXT_PRIMARY  = "#111827"
@@ -199,8 +199,8 @@ def build_dashboard_tab(parent, switch_cb, conn):
 
     students = get_students(conn)
     total     = len(students)
-    active    = len([s for s in students if s[7] == "Active"])
-    inactive  = len([s for s in students if s[7] == "Inactive"])
+    active    = len([s for s in students if len(s) > 7 and s[7] == "Active"])
+    inactive  = len([s for s in students if len(s) > 7 and s[7] == "Inactive"])
 
     # ── STAT CARDS ──
     cards_row = tk.Frame(parent, bg=CONTENT_BG)
@@ -717,7 +717,7 @@ def build_edit_student_tab(parent, switch_cb, conn):
         fields["account_status"] = Fields(row_5_frame, "radio_button", column_index=0,
                                           field_label_text="Account Status",
                                           options=["Active", "Inactive"])
-        fields["account_status"].option_var.set(student[7])
+        fields["account_status"].option_var.set(student[7] if len(student) > 7 else "Active")
 
         Fields(row_5_frame, "date_entry", column_index=1,
                field_label_text="Enrollment Date")
@@ -1240,20 +1240,44 @@ def open_admin_dashboard(window, conn, on_logout=None):
     current_dir = os.path.dirname(os.path.abspath(__file__))
     assets_dir  = os.path.abspath(os.path.join(current_dir, "..", "..", "..", "assets"))
 
+    def _load_transparent_icon(path, size):
+        try:
+            from PIL import Image, ImageTk
+        except Exception:
+            return None
+
+        if not os.path.exists(path):
+            return None
+
+        try:
+            img = Image.open(path).resize(size, Image.LANCZOS)
+            if img.mode != "RGBA":
+                img = img.convert("RGBA")
+
+            bg = img.getpixel((0, 0))
+            if len(bg) == 4 and bg[3] == 255:
+                r0, g0, b0, _ = bg
+                new_pixels = []
+                for r, g, b, a in img.getdata():
+                    if abs(r - r0) <= 8 and abs(g - g0) <= 8 and abs(b - b0) <= 8:
+                        new_pixels.append((r, g, b, 0))
+                    else:
+                        new_pixels.append((r, g, b, a))
+                img.putdata(new_pixels)
+
+            return ImageTk.PhotoImage(img)
+        except Exception:
+            return None
+
     lbl_logo = tk.Label(logo_row, bg=NAV_BG)
     lbl_logo.pack(side="left", padx=(0, 12))
-    
-    try:
-        from PIL import Image, ImageTk
-        path = os.path.join(assets_dir, "edu-icon.png")
-        if os.path.exists(path):
-            img = Image.open(path).resize((42, 42), Image.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
-            lbl_logo.config(image=photo)
-            lbl_logo.image = photo
-        else:
-            lbl_logo.config(text="🎓", font=("Segoe UI Emoji", 28), fg=WHITE)
-    except Exception:
+
+    logo_path = os.path.join(assets_dir, "edu-icon.png")
+    logo_photo = _load_transparent_icon(logo_path, (42, 42))
+    if logo_photo:
+        lbl_logo.config(image=logo_photo)
+        lbl_logo.image = logo_photo
+    else:
         lbl_logo.config(text="🎓", font=("Segoe UI Emoji", 28), fg=WHITE)
 
     text_col = tk.Frame(logo_row, bg=NAV_BG, highlightthickness=0, bd=0)
@@ -1362,13 +1386,12 @@ def open_admin_dashboard(window, conn, on_logout=None):
     def _apply_nav_icon(btn, lbl, filename, size=(20, 20)):
         try:
             path = os.path.join(assets_dir, filename)
-            if os.path.exists(path):
-                img = Image.open(path).resize(size, Image.LANCZOS)
-                photo = ImageTk.PhotoImage(img)
+            photo = _load_transparent_icon(path, size)
+            if photo:
                 lbl.configure(image=photo, text="")
                 lbl.image = photo
                 btn._image_refs.append(photo)
-        except Exception as e:
+        except Exception:
             pass
 
     # Load image icons into nav buttons

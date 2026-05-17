@@ -2,6 +2,37 @@ import sqlite3
 import os
 from database.seeds import pre_seed_db
 
+
+EXPECTED_TABLE_COLUMNS = {
+    "ADMIN": {"admin_id", "username", "password"},
+    "DEPARTMENT": {"id", "department_name"},
+    "COURSES": {"course_id", "course_name", "department_id"},
+    "STUDENTS": {
+        "student_id",
+        "full_name",
+        "course_id",
+        "year_level",
+        "email_address",
+        "contact_number",
+        "house_number",
+        "account_status",
+        "enrollment_date",
+        "password",
+    },
+    "SUBJECTS": {
+        "subject_id",
+        "subject_name",
+        "subject_code",
+        "year_level",
+        "teacher",
+        "course_id",
+        "units",
+        "scheduled_day",
+        "start_time",
+        "end_time",
+    },
+}
+
 def find_db_filepath(path_name: str) -> str:
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
     DATABASE_FILE_PATH = os.path.join(CURRENT_DIR, "..", "database", path_name)
@@ -15,11 +46,46 @@ def connect_db():
 
     conn = sqlite3.connect(db_file_path)
     conn.execute("PRAGMA foreign_keys = ON")
+
+    if needs_schema_reset(conn):
+        reset_database(conn)
+
     create_tables(conn)
     pre_seed_db(conn)
 
     print("[DATABASE CONNECTION]: ESTABLISHED!")
     return conn
+
+
+def needs_schema_reset(conn):
+    cursor = conn.cursor()
+
+    for table_name, expected_columns in EXPECTED_TABLE_COLUMNS.items():
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        existing_columns = {row[1] for row in cursor.fetchall()}
+
+        if existing_columns and existing_columns != expected_columns:
+            return True
+
+    return False
+
+
+def reset_database(conn):
+    cursor = conn.cursor()
+
+    for table_name in [
+        "STUDENT_SUBJECTS",
+        "ANNOUNCEMENTS",
+        "EVENTS",
+        "SUBJECTS",
+        "STUDENTS",
+        "COURSES",
+        "DEPARTMENT",
+        "ADMIN",
+    ]:
+        cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+
+    conn.commit()
 
 def create_tables(conn):
     cursor = conn.cursor()

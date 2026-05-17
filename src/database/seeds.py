@@ -40,9 +40,16 @@ subjects = [
 
 def is_already_seeded(conn):
     cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM ADMIN")
+    admin_count = cursor.fetchone()[0]
+
     cursor.execute("SELECT COUNT(*) FROM COURSES")
-    count = cursor.fetchone()[0]
-    return count > 0
+    course_count = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM STUDENTS")
+    student_count = cursor.fetchone()[0]
+
+    return admin_count > 0 and course_count > 0 and student_count > 0
 
 def pre_seed_db(conn):
     if is_already_seeded(conn):
