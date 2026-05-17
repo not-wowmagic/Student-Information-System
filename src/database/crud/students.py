@@ -283,3 +283,119 @@ def delete_student(conn, student_id):
             conn.commit()
     except sqlite3.Error as e:
         print("Error:", e)
+
+
+# ── REPORT QUERY FUNCTIONS ────────────────────────────────────────────────────
+def get_student_count(conn):
+    """Get total number of students"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM STUDENTS")
+        return cursor.fetchone()[0]
+    except sqlite3.Error as e:
+        print("Error getting student count:", e)
+        return 0
+
+
+def get_active_students_count(conn):
+    """Get number of active students"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM STUDENTS WHERE account_status = 'Active'")
+        return cursor.fetchone()[0]
+    except sqlite3.Error as e:
+        print("Error getting active students count:", e)
+        return 0
+
+
+def get_inactive_students_count(conn):
+    """Get number of inactive students"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM STUDENTS WHERE account_status = 'Inactive'")
+        return cursor.fetchone()[0]
+    except sqlite3.Error as e:
+        print("Error getting inactive students count:", e)
+        return 0
+
+
+def get_recent_enrollments(conn, limit=10):
+    """Get most recently enrolled students"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                STUDENTS.enrollment_date,
+                STUDENTS.student_id,
+                STUDENTS.full_name,
+                COURSES.course_name
+            FROM STUDENTS
+            JOIN COURSES ON STUDENTS.course_id = COURSES.course_id
+            ORDER BY STUDENTS.enrollment_date DESC
+            LIMIT ?
+        """, (limit,))
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print("Error getting recent enrollments:", e)
+        return []
+
+
+def get_enrollment_by_course(conn):
+    """Get enrollment count by course"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                COURSES.course_name,
+                COUNT(STUDENTS.student_id) as enrollment_count
+            FROM COURSES
+            LEFT JOIN STUDENTS ON COURSES.course_id = STUDENTS.course_id
+            GROUP BY COURSES.course_id, COURSES.course_name
+            ORDER BY enrollment_count DESC
+        """)
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print("Error getting enrollment by course:", e)
+        return []
+
+
+def get_enrollment_by_department(conn):
+    """Get enrollment count by department"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                DEPARTMENT.department_name,
+                COUNT(DISTINCT STUDENTS.student_id) as enrollment_count
+            FROM DEPARTMENT
+            LEFT JOIN COURSES ON DEPARTMENT.id = COURSES.department_id
+            LEFT JOIN STUDENTS ON COURSES.course_id = STUDENTS.course_id
+            GROUP BY DEPARTMENT.id, DEPARTMENT.department_name
+            ORDER BY enrollment_count DESC
+        """)
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print("Error getting enrollment by department:", e)
+        return []
+
+
+def get_subject_enrollment_stats(conn):
+    """Get subject enrollment counts and average grades"""
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT 
+                SUBJECTS.subject_code,
+                SUBJECTS.subject_name,
+                COUNT(STUDENT_SUBJECTS.student_id) as enrollment_count,
+                ROUND(AVG(STUDENT_SUBJECTS.grade), 2) as avg_grade
+            FROM SUBJECTS
+            LEFT JOIN STUDENT_SUBJECTS ON SUBJECTS.subject_id = STUDENT_SUBJECTS.subject_id
+            GROUP BY SUBJECTS.subject_id, SUBJECTS.subject_code, SUBJECTS.subject_name
+            ORDER BY enrollment_count DESC
+            LIMIT 10
+        """)
+        return cursor.fetchall()
+    except sqlite3.Error as e:
+        print("Error getting subject enrollment stats:", e)
+        return []

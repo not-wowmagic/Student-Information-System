@@ -4,7 +4,16 @@ from tkinter import ttk as tkttk
 from ttkbootstrap import Separator
 from ttkbootstrap.tableview import Tableview
 from ttkbootstrap.constants import PRIMARY
-from database.crud.students import get_students
+from database.crud.students import (
+    get_students,
+    get_student_count,
+    get_active_students_count,
+    get_inactive_students_count,
+    get_recent_enrollments,
+    get_enrollment_by_course,
+    get_enrollment_by_department,
+    get_subject_enrollment_stats,
+)
 from database.db_utils import find_by_column
 
 
@@ -1058,9 +1067,18 @@ def build_search_tab(parent, switch_cb, conn):
                           command=apply_filters)
     btn_apply.pack(side="left", pady=(16, 0))
 
-def build_reports_tab(parent, switch_cb):
+def build_reports_tab(parent, switch_cb, conn):
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
+
+    # Fetch all data from database
+    total_students = get_student_count(conn)
+    active_students = get_active_students_count(conn)
+    inactive_students = get_inactive_students_count(conn)
+    recent_enrollments = get_recent_enrollments(conn, limit=10)
+    enrollment_by_course = get_enrollment_by_course(conn)
+    enrollment_by_department = get_enrollment_by_department(conn)
+    subject_stats = get_subject_enrollment_stats(conn)
 
     header = tk.Frame(container, bg=WHITE)
     header.pack(fill="x", pady=(48, 32), padx=48)
@@ -1070,23 +1088,63 @@ def build_reports_tab(parent, switch_cb):
     def generate_pdf(e=None):
         try:
             from tkinter import filedialog
+            from datetime import datetime
+            
             path = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title="Save Report")
             if not path:
                 return
             
             try:
                 from fpdf import FPDF
+                
                 pdf = FPDF()
                 pdf.add_page()
                 pdf.set_font("Arial", size=15, style='B')
                 pdf.cell(200, 10, txt="Enchong Dee University - System Report", ln=1, align='C')
-                pdf.set_font("Arial", size=12)
-                pdf.cell(200, 10, txt="", ln=1)
-                pdf.cell(200, 10, txt="Total Students: ", ln=1)
-                pdf.cell(200, 10, txt="Active Students: ", ln=1)
-                pdf.cell(200, 10, txt="Inactive Students: ", ln=1)
-                pdf.cell(200, 10, txt="", ln=1)
-                pdf.cell(200, 10, txt="Recent Enrollments:", ln=1)
+                pdf.set_font("Arial", size=10)
+                pdf.cell(200, 8, txt=f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=1, align='C')
+                pdf.cell(200, 5, txt="", ln=1)
+                
+                # Student Metrics Section
+                pdf.set_font("Arial", size=12, style='B')
+                pdf.cell(200, 10, txt="STUDENT METRICS", ln=1)
+                pdf.set_font("Arial", size=10)
+                pdf.cell(200, 8, txt=f"Total Students: {total_students}", ln=1)
+                pdf.cell(200, 8, txt=f"Active Students: {active_students}", ln=1)
+                pdf.cell(200, 8, txt=f"Inactive Students: {inactive_students}", ln=1)
+                pdf.cell(200, 5, txt="", ln=1)
+                
+                # Course Enrollment Section
+                pdf.set_font("Arial", size=12, style='B')
+                pdf.cell(200, 10, txt="ENROLLMENT BY COURSE", ln=1)
+                pdf.set_font("Arial", size=9)
+                for course_name, count in enrollment_by_course:
+                    pdf.cell(200, 7, txt=f"{course_name}: {count} students", ln=1)
+                pdf.cell(200, 5, txt="", ln=1)
+                
+                # Department Enrollment Section
+                pdf.set_font("Arial", size=12, style='B')
+                pdf.cell(200, 10, txt="ENROLLMENT BY DEPARTMENT", ln=1)
+                pdf.set_font("Arial", size=9)
+                for dept_name, count in enrollment_by_department:
+                    pdf.cell(200, 7, txt=f"{dept_name}: {count} students", ln=1)
+                pdf.cell(200, 5, txt="", ln=1)
+                
+                # Subject Stats Section
+                pdf.set_font("Arial", size=12, style='B')
+                pdf.cell(200, 10, txt="TOP SUBJECTS BY ENROLLMENT", ln=1)
+                pdf.set_font("Arial", size=9)
+                for subject_code, subject_name, enroll_count, avg_grade in subject_stats:
+                    avg_grade_text = f"{avg_grade}" if avg_grade else "N/A"
+                    pdf.cell(200, 7, txt=f"{subject_code}: {subject_name} ({enroll_count} enrolled, avg: {avg_grade_text})", ln=1)
+                pdf.cell(200, 5, txt="", ln=1)
+                
+                # Recent Enrollments Section
+                pdf.set_font("Arial", size=12, style='B')
+                pdf.cell(200, 10, txt="RECENT ENROLLMENTS", ln=1)
+                pdf.set_font("Arial", size=8)
+                for enrollment_date, student_id, full_name, course_name in recent_enrollments:
+                    pdf.cell(200, 6, txt=f"{enrollment_date} - {student_id} ({full_name}) - {course_name}", ln=1)
                 
                 pdf.output(path)
                 
@@ -1097,12 +1155,12 @@ def build_reports_tab(parent, switch_cb):
             except ImportError:
                 notif = tk.Frame(container, bg="#f59e0b", highlightthickness=0)
                 notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-                tk.Label(notif, text="⚠ fpdf library not installed. Showing mock success.", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#f59e0b", padx=16, pady=12).pack()
+                tk.Label(notif, text="⚠ fpdf library not installed. Install with: pip install fpdf2", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#f59e0b", padx=16, pady=12).pack()
                 container.after(3000, notif.destroy)
             except Exception as ex:
                 notif = tk.Frame(container, bg="#dc2626", highlightthickness=0)
                 notif.place(relx=1.0, rely=0.0, x=-32, y=32, anchor="ne")
-                tk.Label(notif, text=f"✗ Error generating PDF", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#dc2626", padx=16, pady=12).pack()
+                tk.Label(notif, text=f"✗ Error generating PDF: {str(ex)[:40]}", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#dc2626", padx=16, pady=12).pack()
                 container.after(3000, notif.destroy)
         except Exception:
             pass
@@ -1110,29 +1168,96 @@ def build_reports_tab(parent, switch_cb):
     btn_export = tk.Button(header, text="Export to PDF", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#dc2626", relief="flat", padx=16, pady=6, cursor="hand2", command=generate_pdf)
     btn_export.pack(side="right")
 
+    # Create scrollable container for all content
+    scroll_container = ScrolledFrame(container, autohide=True)
+    scroll_container.pack(fill="both", expand=True, padx=48, pady=(0, 48))
+    
     # Metrics
-    metrics_f = tk.Frame(container, bg=WHITE)
-    metrics_f.pack(fill="x", padx=48, pady=(0, 32))
+    metrics_f = tk.Frame(scroll_container, bg=WHITE)
+    metrics_f.pack(fill="x", pady=(0, 32))
     
     def _metric(p, title, val, color):
         card = tk.Frame(p, bg=color, highlightthickness=1, highlightbackground=color)
         card.pack(side="left", fill="x", expand=True, padx=(0, 16))
         tk.Label(card, text=title, font=("Segoe UI", 10, "bold"), fg=WHITE, bg=color).pack(anchor="w", padx=16, pady=(16, 4))
-        tk.Label(card, text=val, font=("Segoe UI", 24, "bold"), fg=WHITE, bg=color).pack(anchor="w", padx=16, pady=(0, 16))
+        tk.Label(card, text=str(val), font=("Segoe UI", 24, "bold"), fg=WHITE, bg=color).pack(anchor="w", padx=16, pady=(0, 16))
         
-    _metric(metrics_f, "Total Students", "", "#2563eb") # blue
-    _metric(metrics_f, "Active Students", "", "#16a34a") # green
-    _metric(metrics_f, "Inactive Students", "", "#64748b") # slate
+    _metric(metrics_f, "Total Students", total_students, "#2563eb")
+    _metric(metrics_f, "Active Students", active_students, "#16a34a")
+    _metric(metrics_f, "Inactive Students", inactive_students, "#64748b")
 
-    # Preview Table
-    tk.Label(container, text="Recent Enrollments Preview", font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", padx=48, pady=(0, 16))
-    grid_f = tk.Frame(container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
-    grid_f.pack(fill="both", expand=True, padx=48, pady=(0, 48))
+    # Course Enrollment Section
+    tk.Label(scroll_container, text="Enrollment by Course", font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(24, 16))
+    course_f = tk.Frame(scroll_container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
+    course_f.pack(fill="x", pady=(0, 32))
+    
+    course_tree = tkttk.Treeview(course_f, columns=("Course", "Enrollment"), show="headings", height=6)
+    course_tree.heading("Course", text="Course Name")
+    course_tree.heading("Enrollment", text="Student Count")
+    course_tree.column("Course", anchor="w", width=250)
+    course_tree.column("Enrollment", anchor="center", width=150)
+    
+    for course_name, count in enrollment_by_course:
+        course_tree.insert("", "end", values=(course_name, count))
+    
+    course_tree.pack(fill="both", expand=True)
+
+    # Department Enrollment Section
+    tk.Label(scroll_container, text="Enrollment by Department", font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(24, 16))
+    dept_f = tk.Frame(scroll_container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
+    dept_f.pack(fill="x", pady=(0, 32))
+    
+    dept_tree = tkttk.Treeview(dept_f, columns=("Department", "Enrollment"), show="headings", height=5)
+    dept_tree.heading("Department", text="Department Name")
+    dept_tree.heading("Enrollment", text="Student Count")
+    dept_tree.column("Department", anchor="w", width=250)
+    dept_tree.column("Enrollment", anchor="center", width=150)
+    
+    for dept_name, count in enrollment_by_department:
+        dept_tree.insert("", "end", values=(dept_name, count))
+    
+    dept_tree.pack(fill="both", expand=True)
+
+    # Subject Stats Section
+    tk.Label(scroll_container, text="Top Subjects by Enrollment", font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(24, 16))
+    subject_f = tk.Frame(scroll_container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
+    subject_f.pack(fill="x", pady=(0, 32))
+    
+    subject_tree = tkttk.Treeview(subject_f, columns=("Code", "Subject", "Enrollment", "AvgGrade"), show="headings", height=10)
+    subject_tree.heading("Code", text="Code")
+    subject_tree.heading("Subject", text="Subject Name")
+    subject_tree.heading("Enrollment", text="Enrolled")
+    subject_tree.heading("AvgGrade", text="Avg Grade")
+    subject_tree.column("Code", anchor="w", width=80)
+    subject_tree.column("Subject", anchor="w", width=150)
+    subject_tree.column("Enrollment", anchor="center", width=80)
+    subject_tree.column("AvgGrade", anchor="center", width=80)
+    
+    for subject_code, subject_name, enroll_count, avg_grade in subject_stats:
+        avg_grade_text = f"{avg_grade}" if avg_grade else "N/A"
+        subject_tree.insert("", "end", values=(subject_code, subject_name, enroll_count, avg_grade_text))
+    
+    subject_tree.pack(fill="both", expand=True)
+
+    # Recent Enrollments Table
+    tk.Label(scroll_container, text="Recent Enrollments Preview", font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(24, 16))
+    grid_f = tk.Frame(scroll_container, bg=WHITE, highlightthickness=1, highlightbackground="#e2e8f0")
+    grid_f.pack(fill="both", expand=True, pady=(0, 32))
 
     cols = ("Date", "ID", "Name", "Course")
     tree = tkttk.Treeview(grid_f, columns=cols, show="headings", height=10)
-    for c in cols: tree.heading(c, text=c); tree.column(c, anchor="w", width=150)
-    # No data — will be populated by database
+    tree.heading("Date", text="Date")
+    tree.heading("ID", text="ID")
+    tree.heading("Name", text="Name")
+    tree.heading("Course", text="Course")
+    tree.column("Date", anchor="w", width=120)
+    tree.column("ID", anchor="w", width=100)
+    tree.column("Name", anchor="w", width=150)
+    tree.column("Course", anchor="w", width=200)
+    
+    for enrollment_date, student_id, full_name, course_name in recent_enrollments:
+        tree.insert("", "end", values=(enrollment_date, student_id, full_name, course_name))
+    
     tree.pack(fill="both", expand=True)
 
 def build_settings_tab(parent, switch_cb):
@@ -1372,7 +1497,7 @@ def open_admin_dashboard(window, conn, on_logout=None):
         elif tab_name == "Add Announcement":
             build_add_announcement_tab(main_frame, switch_tab, conn)
         elif tab_name == "Reports":
-            build_reports_tab(main_frame, switch_tab)
+            build_reports_tab(main_frame, switch_tab, conn)
         elif tab_name == "Settings":
             build_settings_tab(main_frame, switch_tab)
         else:
