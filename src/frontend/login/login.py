@@ -46,8 +46,6 @@ def open_login_window(window, conn, on_login_success):
         username = user_input.get()
         password = password_input.get()
 
-        print(username)
-        print(password)
         is_user_validate = user_validation(username)
         is_password_validate = pass_validation(password)
 
@@ -62,34 +60,23 @@ def open_login_window(window, conn, on_login_success):
             password_error_label.config(text="Invalid Username or Password")
             return
 
+        user_id = is_user_exist[0]
         role = is_user_exist[1]
 
-        if not remember_var.get() == 1:
+        if remember_var.get() == 1:
+            save_credentials_state(username)
 
-            print("ROLE: ", role)
-            if not role:
-                print("[LOGIN AUTH]: NO ROLE PROVIDED!")
-                return
+        if not role:
+            return
 
-            on_login_success(win, role)
+        on_login_success(win, role, user_id)
 
-            toast = ToastNotification(
-                title="Successfully login.",
-                message="Redirecting...",
-                duration=5000,
-            )
-            toast.show_toast()
-        else:
-            save_credentials_state(username, password)
-            on_login_success(win, role)
-            # no remember me
-            toast = ToastNotification(
-                title="Successfully login.",
-                message="Redirecting...",
-                duration=5000,
-            )
-
-            toast.show_toast()
+        toast = ToastNotification(
+            title="Successfully login.",
+            message="Redirecting...",
+            duration=5000,
+        )
+        toast.show_toast()
 
 
     # ── Window ────────────────────────────────────────────────────────────────
@@ -198,11 +185,6 @@ def open_login_window(window, conn, on_login_success):
 
     password_input = Entry(form, validate="focus", validatecommand=(password_validation_func, '%P'), show="•", font=(FONT_DEFAULT_NAME, 11))
     password_input.pack(fill="x", ipady=4, pady=(4, 8))
-
-    password_data = get_credentials("password")
-    if password_data:
-        password_input.insert(0, password_data)
-
 
     password_error_label = Label(form, font=(FONT_DEFAULT_NAME, 8), bootstyle="danger")
     password_error_label.pack(anchor="w")

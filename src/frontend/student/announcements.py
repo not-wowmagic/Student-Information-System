@@ -1,4 +1,6 @@
 import tkinter as tk
+from database.crud.announcement import get_announcements
+from database.db_utils import find_by_column
 
 NAV_BG        = "#001f5b"
 WHITE         = "#ffffff"
@@ -6,7 +8,7 @@ TEXT_PRIMARY  = "#111827"
 TEXT_MUTED    = "#6b7280"
 CARD_BORDER   = "#e2e8f0"
 
-def build_announcements_tab(parent, switch_cb):
+def build_announcements_tab(parent, switch_cb, conn, student_id=None):
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
@@ -28,7 +30,10 @@ def build_announcements_tab(parent, switch_cb):
     feed = tk.Frame(container, bg=WHITE)
     feed.pack(fill="both", expand=True, padx=24)
 
-    announcements_data = [] #no mock datas
+    announcements_data = get_announcements(conn)
+
+    if not announcements_data:
+        tk.Label(feed, text="No announcements available.", font=("Segoe UI", 12), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w", padx=24, pady=24)
 
     for i, data in enumerate(announcements_data):
         card = tk.Frame(feed, bg=WHITE)
@@ -38,7 +43,16 @@ def build_announcements_tab(parent, switch_cb):
         left_col = tk.Frame(card, bg=WHITE, width=20)
         left_col.pack(side="left", fill="y", padx=(0, 16))
         left_col.pack_propagate(False)
-        if data["is_new"]:
+        dept_id = data[1]
+        title = data[2]
+        category = data[3]
+        content = data[4]
+        created_at = data[5]
+
+        dept_data = find_by_column(conn, "DEPARTMENT", "id", dept_id) if dept_id else None
+        dept_name = dept_data[1] if dept_data else "All Departments"
+
+        if dept_id is not None:
             dot = tk.Frame(left_col, bg=NAV_BG, width=8, height=8)
             dot.pack(pady=(6,0))
 
@@ -49,14 +63,14 @@ def build_announcements_tab(parent, switch_cb):
         hdr = tk.Frame(content_col, bg=WHITE)
         hdr.pack(fill="x", pady=(0, 8))
         
-        tk.Label(hdr, text=data["tag"], font=("Segoe UI", 7, "bold"), fg=data["tag_color"], bg=data["tag_bg"], padx=6, pady=2).pack(side="left")
-        tk.Label(hdr, text=f"•  {data['date']}  •  {data['author']}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(side="left", padx=(8,0))
+        tk.Label(hdr, text=category, font=("Segoe UI", 7, "bold"), fg="#0f766e", bg="#ccfbf1", padx=6, pady=2).pack(side="left")
+        tk.Label(hdr, text=f"•  {created_at}  •  {dept_name}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(side="left", padx=(8,0))
 
         # Title
-        tk.Label(content_col, text=data["title"], font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 4))
+        tk.Label(content_col, text=title, font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE).pack(anchor="w", pady=(0, 4))
         
         # Content
-        tk.Label(content_col, text=data["content"], font=("Segoe UI", 10), fg="#4b5563", bg=WHITE, justify="left", wraplength=800).pack(anchor="w")
+        tk.Label(content_col, text=content, font=("Segoe UI", 10), fg="#4b5563", bg=WHITE, justify="left", wraplength=800).pack(anchor="w")
 
         if i < len(announcements_data) - 1:
             tk.Frame(feed, bg=CARD_BORDER, height=1).pack(fill="x", padx=24)

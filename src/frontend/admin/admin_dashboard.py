@@ -313,7 +313,21 @@ def build_dashboard_tab(parent, switch_cb, conn):
               relief="solid", bd=1, cursor="hand2", pady=6,
               activebackground="#f3f4f6").pack(fill="x", pady=(14, 0))
 
-def build_student_profile_tab(parent, switch_cb):
+def build_student_profile_tab(parent, switch_cb, conn=None, student_id=None):
+    from database.crud.students import search_student, get_student_gwa, get_student_subjects
+
+    student = search_student(conn, student_id) if conn and student_id else None
+    course_name = "Unknown"
+    gwa_value = "N/A"
+    credit_value = 0
+
+    if student and conn:
+        course_data = find_by_column(conn, "COURSES", "course_id", student[2])
+        course_name = course_data[1] if course_data else "Unknown"
+        gwa = get_student_gwa(conn, student_id)
+        if gwa is not None:
+            gwa_value = f"{gwa:.2f}"
+        credit_value = sum(float(row[7]) for row in get_student_subjects(conn, student_id))
     # Top breadcrumb
     bc = tk.Frame(parent, bg=CONTENT_BG)
     bc.pack(fill="x", padx=24, pady=(16, 10))
@@ -338,8 +352,8 @@ def build_student_profile_tab(parent, switch_cb):
     avatar = tk.Label(avatar_wrap, text="👤", font=("Segoe UI Emoji", 48), fg="#cbd5e1", bg="#f1f5f9", width=3, height=1)
     avatar.pack(pady=10)
 
-    tk.Label(left_inner, text="", font=("Segoe UI", 16, "bold"), fg=NAV_BG, bg=CARD_BG).pack()
-    tk.Label(left_inner, text="", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=CARD_BG).pack()
+    tk.Label(left_inner, text=student[1] if student else "Student Profile", font=("Segoe UI", 16, "bold"), fg=NAV_BG, bg=CARD_BG).pack()
+    tk.Label(left_inner, text=course_name, font=("Segoe UI", 10), fg=TEXT_MUTED, bg=CARD_BG).pack()
 
     # Badges
     badges = tk.Frame(left_inner, bg=CARD_BG)
@@ -357,10 +371,10 @@ def build_student_profile_tab(parent, switch_cb):
         tk.Label(r, text=label, font=("Segoe UI", 9, "bold"), fg=TEXT_MUTED, bg=CARD_BG).pack(side="left")
         tk.Label(r, text=val, font=("Segoe UI", 10), fg=TEXT_PRIMARY, bg=CARD_BG).pack(side="right")
 
-    _detail_row(det, "Student ID", "")
-    _detail_row(det, "Admission Date", "")
-    _detail_row(det, "Email Address", "")
-    _detail_row(det, "Phone", "")
+    _detail_row(det, "Student ID", student[0] if student else "")
+    _detail_row(det, "Admission Date", student[8] if student else "")
+    _detail_row(det, "Email Address", student[4] if student else "")
+    _detail_row(det, "Phone", student[5] if student else "")
 
     # Bottom Academic Summary Card
     acad = tk.Frame(left_inner, bg=NAV_BG)
@@ -372,12 +386,12 @@ def build_student_profile_tab(parent, switch_cb):
     grade = tk.Frame(acad_grid, bg="#1a3a7a")
     grade.pack(side="left", fill="both", expand=True, padx=(0, 4))
     tk.Label(grade, text="Grade", font=("Segoe UI", 8), fg="#aab4c8", bg="#1a3a7a").pack(anchor="w", padx=8, pady=(8, 0))
-    tk.Label(grade, text="", font=("Segoe UI", 16, "bold"), fg=WHITE, bg="#1a3a7a").pack(anchor="w", padx=8, pady=(0, 8))
+    tk.Label(grade, text=gwa_value, font=("Segoe UI", 16, "bold"), fg=WHITE, bg="#1a3a7a").pack(anchor="w", padx=8, pady=(0, 8))
 
     cred = tk.Frame(acad_grid, bg="#1a3a7a")
     cred.pack(side="right", fill="both", expand=True, padx=(4, 0))
     tk.Label(cred, text="Credits", font=("Segoe UI", 8), fg="#aab4c8", bg="#1a3a7a").pack(anchor="w", padx=8, pady=(8, 0))
-    tk.Label(cred, text="", font=("Segoe UI", 16, "bold"), fg=WHITE, bg="#1a3a7a").pack(anchor="w", padx=8, pady=(0, 8))
+    tk.Label(cred, text=str(int(credit_value)), font=("Segoe UI", 16, "bold"), fg=WHITE, bg="#1a3a7a").pack(anchor="w", padx=8, pady=(0, 8))
 
     # RIGHT COLUMN
     right_col = tk.Frame(cols, bg=CARD_BORDER)
@@ -401,8 +415,8 @@ def build_student_profile_tab(parent, switch_cb):
     maj_card = tk.Frame(row1, bg="#f8fafc", highlightthickness=1, highlightbackground=CARD_BORDER, bd=0)
     maj_card.pack(side="left", fill="both", expand=True, padx=(0, 8))
     tk.Label(maj_card, text="PRIMARY MAJOR", font=("Segoe UI", 8, "bold"), fg=NAV_BG, bg="#f8fafc").pack(anchor="w", padx=16, pady=(16, 4))
-    tk.Label(maj_card, text="School of Engineering", font=("Segoe UI", 11, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w", padx=16)
-    tk.Label(maj_card, text="Computer Science Concentration", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w", padx=16, pady=(0, 16))
+    tk.Label(maj_card, text=course_name, font=("Segoe UI", 11, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w", padx=16)
+    tk.Label(maj_card, text=f"Year {student[3]}" if student else "", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w", padx=16, pady=(0, 16))
 
     adv_card = tk.Frame(row1, bg="#f8fafc", highlightthickness=1, highlightbackground=CARD_BORDER, bd=0)
     adv_card.pack(side="right", fill="both", expand=True, padx=(8, 0))
@@ -412,8 +426,8 @@ def build_student_profile_tab(parent, switch_cb):
     tk.Label(adv_in, text="👤", font=("Segoe UI", 18), bg="#e2e8f0").pack(side="left", padx=(0, 10))
     a_t = tk.Frame(adv_in, bg="#f8fafc")
     a_t.pack(side="left")
-    tk.Label(a_t, text="Mr. John Christian Lor, MSIT", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w")
-    tk.Label(a_t, text="Senior Professor", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w")
+    tk.Label(a_t, text="Student Advisor", font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg="#f8fafc").pack(anchor="w")
+    tk.Label(a_t, text="Seeded demo profile", font=("Segoe UI", 9), fg=TEXT_MUTED, bg="#f8fafc").pack(anchor="w")
 
     tk.Label(content, text="SCHOLARSHIPS & HONORS", font=("Segoe UI", 9, "bold"), fg=NAV_BG, bg=CARD_BG).pack(anchor="w", pady=(32, 8))
 
@@ -472,15 +486,30 @@ def build_add_student_tab(parent, switch_cb, conn):
     class StudentForm(Form):
         def onSubmit(self):
 
+            def parse_year(value):
+                if not value:
+                    return None
+                digits = "".join(ch for ch in str(value) if ch.isdigit())
+                return int(digits) if digits else None
+
 
             student_id = student_id_field.get_input()
             full_name = full_name_field.get_input()
             course_text = course_field.get_input()
-            year_level = int(year_level_field.get_input()[0])
+            year_level = parse_year(year_level_field.get_input())
             email_address = email_address_field.get_input()
             contact_number = contact_number_field.get_input()
             enrollment_date = enrollment_date_field.get_input()
             account_status = account_status_field.get_input()
+
+            if year_level is None:
+                ToastNotification(
+                    title="Missing year level.",
+                    message="Please select a valid year level.",
+                    duration=3000,
+                    bootstyle="danger"
+                ).show_toast()
+                return
 
             # ── Optional field ──
             HOUSE_PLACEHOLDER = "House No., Street, Barangay, City, Province"

@@ -103,9 +103,15 @@ def build_add_subject_tab(parent, switch_cb, conn):
 
     class SubjectForm(Form):
         def onSubmit(self):
+            def parse_year(value):
+                if not value:
+                    return None
+                digits = "".join(ch for ch in str(value) if ch.isdigit())
+                return int(digits) if digits else None
+
             course_code = course_code_field.get_input()
             course_title = course_title_field.get_input()
-            year_level: str = year_level_field.get_input()
+            year_level = parse_year(year_level_field.get_input())
             teacher = teachers_field.get_input()
             units = course_units_field.get_input()
             department = department_field.get_input()
@@ -124,6 +130,10 @@ def build_add_subject_tab(parent, switch_cb, conn):
 
             if not teacher or teacher == "e.g John Christian Lorr":
                 print("no teacher!")
+                return
+
+            if year_level is None:
+                print("no year level!")
                 return
 
             if not units or units == "e.g 3":
@@ -145,7 +155,7 @@ def build_add_subject_tab(parent, switch_cb, conn):
             subject_data = [
                 course_code,
                 course_title,
-                int(year_level[0]),
+                year_level,
                 teacher,
                 department,
                 float(units),  # units is REAL in DB

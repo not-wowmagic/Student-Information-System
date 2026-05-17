@@ -19,7 +19,7 @@ class Form(ABC):
 
         self.button = Button(self.frame_button_container, bootstyle="primary", text="Submit", command=self.onSubmit)
         self.button.pack(side=LEFT, ipady=3, ipadx=14, padx=(0, 12))
-        self.button = Button(self.frame_button_container, bootstyle="primary", text="Cancel", command=self.onSubmit)
+        self.button = Button(self.frame_button_container, bootstyle="secondary", text="Cancel", command=self.onCancel)
         self.button.pack(side=LEFT, ipady=3, ipadx=14, padx=(0, 12))
     def build_rows(self, row_configs: list[tuple[int, int]]):
         for config in row_configs:
@@ -41,6 +41,9 @@ class Form(ABC):
         :return:
         """
         pass
+
+    def onCancel(self):
+        return None
 
 
 

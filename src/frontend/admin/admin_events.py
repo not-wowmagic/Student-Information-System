@@ -60,7 +60,7 @@ def build_events_list_tab(parent, switch_cb, conn):
             dept_data = find_by_column(conn, "DEPARTMENT", "id", dept_id)
             dept_name = dept_data[1] if dept_data else "Unknown"
 
-        rowdata.append((title, event_type, event_date, start_time, end_time, location, dept_name))
+        rowdata.append((title, event_type, dept_name, location, start_time, end_time, event_date))
 
     # ── Tableview ──
     style = tkttk.Style()

@@ -1,4 +1,7 @@
 import tkinter as tk
+from datetime import datetime
+from database.crud.events import get_events
+from database.db_utils import find_by_column
 
 NAV_BG        = "#001f5b"
 WHITE         = "#ffffff"
@@ -6,7 +9,7 @@ TEXT_PRIMARY  = "#111827"
 TEXT_MUTED    = "#6b7280"
 CARD_BORDER   = "#e2e8f0"
 
-def build_events_tab(parent, switch_cb):
+def build_events_tab(parent, switch_cb, conn, student_id=None):
     container = tk.Frame(parent, bg=WHITE)
     container.pack(fill="both", expand=True)
 
@@ -28,7 +31,7 @@ def build_events_tab(parent, switch_cb):
     grid_container = tk.Frame(container, bg=WHITE)
     grid_container.pack(fill="both", expand=True, padx=48)
 
-    events_data = [] #removed mock datas
+    events_data = get_events(conn)
 
     for i in range(3):
         grid_container.columnconfigure(i, weight=1, uniform="col")
@@ -39,31 +42,58 @@ def build_events_tab(parent, switch_cb):
         tk.Label(notif, text="✓ Successfully RSVP'd for event", font=("Segoe UI", 10, "bold"), fg=WHITE, bg="#10b981", padx=16, pady=12).pack()
         container.after(3000, notif.destroy)
 
+    if not events_data:
+        tk.Label(grid_container, text="No events available.", font=("Segoe UI", 12), fg=TEXT_MUTED, bg=WHITE).grid(row=0, column=0, sticky="w", pady=24)
+
     for i, data in enumerate(events_data):
+        row = i // 3
+        col = i % 3
         card = tk.Frame(grid_container, bg=WHITE, highlightthickness=1, highlightbackground=CARD_BORDER)
-        card.grid(row=0, column=i, sticky="nsew", padx=(0 if i==0 else 12, 12 if i!=2 else 0))
+        card.grid(row=row, column=col, sticky="nsew", padx=(0 if col==0 else 12, 12 if col!=2 else 0), pady=(0 if row == 0 else 16, 0))
         
         # Date block
-        date_f = tk.Frame(card, bg=data["color"])
+        title = data[1]
+        event_type = data[2]
+        event_date = data[3]
+        start_time = data[4] if data[4] else "—"
+        end_time = data[5] if data[5] else "—"
+        location = data[6] if data[6] else "—"
+        dept_id = data[7]
+        dept_data = find_by_column(conn, "DEPARTMENT", "id", dept_id) if dept_id else None
+        dept_name = dept_data[1] if dept_data else "All Departments"
+        if isinstance(event_date, str):
+            try:
+                parsed_date = datetime.strptime(event_date, "%Y-%m-%d")
+                day = str(parsed_date.day)
+                month = parsed_date.strftime("%b").upper()
+            except ValueError:
+                day = event_date
+                month = ""
+        else:
+            day = str(event_date)
+            month = ""
+
+        date_f = tk.Frame(card, bg=NAV_BG)
         date_f.pack(fill="x")
-        date_inner = tk.Frame(date_f, bg=data["color"], pady=16)
+        date_inner = tk.Frame(date_f, bg=NAV_BG, pady=16)
         date_inner.pack()
-        tk.Label(date_inner, text=data["month"], font=("Segoe UI", 10, "bold"), fg=WHITE, bg=data["color"]).pack()
-        tk.Label(date_inner, text=data["day"], font=("Segoe UI", 28, "bold"), fg=WHITE, bg=data["color"]).pack()
+        tk.Label(date_inner, text=month, font=("Segoe UI", 10, "bold"), fg=WHITE, bg=NAV_BG).pack()
+        tk.Label(date_inner, text=day, font=("Segoe UI", 28, "bold"), fg=WHITE, bg=NAV_BG).pack()
 
         # Content block
         content = tk.Frame(card, bg=WHITE)
         content.pack(fill="both", expand=True, padx=20, pady=20)
 
-        tk.Label(content, text=data["type"], font=("Segoe UI", 8, "bold"), fg=data["color"], bg=WHITE).pack(anchor="w", pady=(0, 8))
+        tk.Label(content, text=event_type, font=("Segoe UI", 8, "bold"), fg=NAV_BG, bg=WHITE).pack(anchor="w", pady=(0, 8))
         
         title_f = tk.Frame(content, bg=WHITE, height=48)
         title_f.pack(fill="x", pady=(0, 16))
         title_f.pack_propagate(False)
-        tk.Label(title_f, text=data["title"], font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE, wraplength=200, justify="left").pack(anchor="w")
+        tk.Label(title_f, text=title, font=("Segoe UI", 12, "bold"), fg=TEXT_PRIMARY, bg=WHITE, wraplength=200, justify="left").pack(anchor="w")
 
-        tk.Label(content, text=f"🕒 {data['time']}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w", pady=(0, 4))
-        tk.Label(content, text=f"📍 {data['location']}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w")
+        tk.Label(content, text=f"🕒 {start_time} - {end_time}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w", pady=(0, 4))
+        tk.Label(content, text=f"📍 {location}", font=("Segoe UI", 9), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w")
+        tk.Label(content, text=dept_name, font=("Segoe UI", 8), fg=TEXT_MUTED, bg=WHITE).pack(anchor="w", pady=(4, 0))
 
         # RSVP button
         btn_rsvp = tk.Button(content, text="RSVP Now", font=("Segoe UI", 9, "bold"), fg=NAV_BG, bg=WHITE, relief="solid", bd=1, pady=6, cursor="hand2", command=show_rsvp)

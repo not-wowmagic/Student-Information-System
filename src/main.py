@@ -42,8 +42,7 @@ def main() -> None:
         def on_logout(win):
                 open_login_window(win, conn, on_login_success=on_login_success)
 
-        def on_login_success(login_win: ttkbootstrap.Window, role: str | None) -> None:
-                print(role)
+        def on_login_success(login_win: ttkbootstrap.Window, role: str | None, user_id: str | int | None = None) -> None:
                 if not role:
                         print("[LOGIN SERVICE]: Please input a role!")
                         return
@@ -53,7 +52,7 @@ def main() -> None:
                 if role == "admin":
                         open_admin_dashboard(window, conn, on_logout=on_logout)
                 else:
-                        open_dashboard_window(window, conn, on_logout=on_logout)
+                        open_dashboard_window(window, conn, on_logout=on_logout, student_id=user_id)
 
 
         open_login_window(window, conn, on_login_success=on_login_success)

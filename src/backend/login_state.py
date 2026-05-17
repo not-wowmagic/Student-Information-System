@@ -18,12 +18,11 @@ def load_login_credentials():
         return {}
 
 
-def save_login_credentials(username, password):
+def save_login_credentials(username, password=None):
     os.makedirs(DATA_FOLDER, exist_ok=True)
 
     credentials = {
         "username": username,
-        "password": password,
     }
 
     with open(LOGIN_FILE, "w") as file:

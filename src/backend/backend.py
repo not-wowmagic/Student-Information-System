@@ -8,6 +8,10 @@ import bcrypt
 
 import sqlite3
 
+def _is_bcrypt_hash(value: str | None) -> bool:
+    return isinstance(value, str) and value.startswith("$2") and len(value) >= 59
+
+
 def validate_auth(conn, username: str, password: str):
     try:
         with conn:
@@ -19,19 +23,27 @@ def validate_auth(conn, username: str, password: str):
             row = cursor.fetchone()
 
             if row is not None:
-                if password == row[2]:
-                    return [row[0], "admin"]
+                stored_admin_pw = row[2]
+                if _is_bcrypt_hash(stored_admin_pw):
+                    if bcrypt.checkpw(password.encode("utf-8"), stored_admin_pw.encode("utf-8")):
+                        return [row[0], "admin"]
+                else:
+                    # Migration path for legacy plaintext admin passwords
+                    if password == stored_admin_pw:
+                        new_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+                        cursor.execute(
+                            "UPDATE ADMIN SET password = ? WHERE admin_id = ?",
+                            (new_hash, row[0]),
+                        )
+                        return [row[0], "admin"]
 
             query = "SELECT * FROM STUDENTS WHERE student_id = ?"
             cursor.execute(query, (username,))
             row = cursor.fetchone()
 
-            print("ROW:", row)
             if row is not None:
                 stored_hash = row[9]
-                print("CHECKING PASSWORD:", password)
-                print("AGAINST HASH:", stored_hash)
-                if bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8")):
+                if stored_hash and bcrypt.checkpw(password.encode("utf-8"), stored_hash.encode("utf-8")):
                     return [row[0], "student"]
 
             return None
@@ -66,24 +78,23 @@ def create_new_students(conn, student_data: list, mock=False):
 
     if not student_id:
         print("no student id!")
-        return
+        return False, "No student id"
 
     if not full_name:
         print("no student full_name!")
-        return
+        return False, "No student full name"
 
 
     if not course_text:
         print("no student course_text!")
-        return
+        return False, "No student course"
 
 
     if not mock:
         course_data = find_by_column(conn, "COURSES", "course_name", course_text)
-
-        print(course_data)
         if not course_data:
             print("no course data found")
+            return False, "No course data found"
 
         course_text = course_data[0]
 
@@ -131,7 +142,8 @@ def create_new_students(conn, student_data: list, mock=False):
     data  =  add_student(conn, student_data)
     is_success = data[0]
     err_message = data[1]
-    enroll_student(conn, student_id, course_text, year_level)
+    if is_success:
+        enroll_student(conn, student_id, course_text, year_level)
 
     return is_success, err_message
 
@@ -160,42 +172,42 @@ def create_new_subject(conn, subject_data: list):
 
     if not subject_code:
         print("no subject code!")
-        return
+        return False, "No subject code"
 
     if not subject_name:
         print("no subject name!")
-        return
+        return False, "No subject name"
 
     if not teacher:
         print("no teacher!")
-        return
+        return False, "No teacher"
 
     if not course_text:
         print("no department!")
-        return
+        return False, "No course"
 
     if not units:
         print("no units!")
-        return
+        return False, "No units"
 
     if not scheduled_day:
         print("no scheduled day!")
-        return
+        return False, "No scheduled day"
 
     if not start_time:
         print("no start time!")
-        return
+        return False, "No start time"
 
     if not end_time:
         print("no end time!")
-        return
+        return False, "No end time"
 
     # convert course_name → course_id
     course_data = find_by_column(conn, "COURSES", "course_name", course_text)
 
     if not course_data:
         print("no course data found!")
-        return
+        return False, "No course data found"
 
     course_id = course_data[0]
 
@@ -215,7 +227,8 @@ def create_new_subject(conn, subject_data: list):
     is_success = data[0]
     err_message = data[1]
     subject_data =  find_by_column(conn, "SUBJECTS", "subject_name", subject_name)
-    sync_all_students_for_new_subject(conn, subject_data[0])
+    if subject_data:
+        sync_all_students_for_new_subject(conn, subject_data[0])
 
     return  is_success, err_message
 
@@ -239,44 +252,33 @@ def create_new_event(conn, event_data: list):
 
     if not title:
         print("no title!")
-        return
+        return False, "No title"
 
     if not event_type:
         print("no event type!")
-        return
+        return False, "No event type"
 
     if not event_date:
         print("no event date!")
-        return
+        return False, "No event date"
 
-    if not department:
-        print("no department!")
-        return
+    department_id = None
+    if department not in (None, "All Departments"):
+        department_data = find_by_column(conn, "DEPARTMENT", "department_name", department)
+        if not department_data:
+            print("no department data found!")
+            return False, "No department data found"
+        department_id = department_data[0]
 
-    # convert course_name → course_id
-    department_data = find_by_column(conn, "DEPARTMENT", "department_name", department)
-
-    print(department_data)
-    if not department_data:
-        print("no department data found!")
-        return
-
-
-    event_data[6] = department_data[0]
-
-    print(event_data)
-    add_event(conn, event_data)
+    event_data[6] = department_id
+    result = add_event(conn, event_data)
+    return bool(result), "Success" if result else "Failed to add event"
 
 def create_new_announcement(conn, announcement_data: list):
     title      = announcement_data[0]
     category   = announcement_data[1]
     content    = announcement_data[2]
     department = announcement_data[3]  # "All Departments" or department name
-    print(f"Looking for department: {department}")
-
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM DEPARTMENT")
-    print(f"All departments in DB: {cursor.fetchall()}")  # ← what's actually stored?
 
 
     if not title:
@@ -285,16 +287,17 @@ def create_new_announcement(conn, announcement_data: list):
 
     if not content:
         print("no content!")
-        return
+        return False, "No content"
 
-    # Convert department name → course_id
+    # Convert department name → department_id
     if department is None or department == "All Departments":
-        course_id = None
+        department_id = None
     else:
-        course_data = find_by_column(conn, "COURSES", "course_name", department)
-        course_id = course_data[0] if course_data else None
+        department_data = find_by_column(conn, "DEPARTMENT", "department_name", department)
+        department_id = department_data[0] if department_data else None
 
-    add_announcement(conn, [title, category, content, course_id])
+    result = add_announcement(conn, [title, category, content, department_id])
+    return bool(result), "Success" if result is not False else "Failed to add announcement"
 
 # ---- REMEMBER ME -----
 def get_credentials(fields):
@@ -304,9 +307,7 @@ def get_credentials(fields):
 
     return data.get(fields)
 
-def save_credentials_state(username: str, password: str):
-    print("Saving data...")
-    save_login_credentials(username, password)
-    print("Saving completed...")
+def save_credentials_state(username: str, password: str | None = None):
+    save_login_credentials(username)
 
 

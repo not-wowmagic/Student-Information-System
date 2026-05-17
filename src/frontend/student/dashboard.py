@@ -5,6 +5,10 @@ from PIL import Image, ImageTk
 
 from constants import CUSTOM_BACKGROUND_COLOR
 from icon_utils import apply_window_icon
+from database.crud.announcement import get_announcements
+from database.crud.events import get_events
+from database.crud.students import get_student_gwa, get_student_subjects, search_student
+from database.db_utils import find_by_column
 from src.frontend.student.grade import build_grades_tab
 from src.frontend.student.subjects import build_subjects_tab
 from src.frontend.student.announcements import build_announcements_tab
@@ -100,142 +104,111 @@ def _section_label(parent, text):
              padx=22).pack(fill="x", pady=(16, 2))
 
 
-# ── VIEW BUILDERS ────────────────────────────────────────────────────────────
-def build_dashboard_tab(parent, switch_cb):
-    
-    # ── Profile Banner ──
+def build_dashboard_tab(parent, switch_cb, conn, student_id=None):
+    student = search_student(conn, student_id) if student_id else None
+    student_name = student[1] if student else "Student"
+    course_name = "Unknown"
+    year_level = "-"
+    account_status = "-"
+    gwa_value = "N/A"
+    credits_value = 0
+
+    subjects = get_student_subjects(conn, student_id) if student_id else []
+    gwa = get_student_gwa(conn, student_id) if student_id else None
+    if gwa is not None:
+        gwa_value = f"{gwa:.2f}"
+    credits_value = sum(int(row[7]) for row in subjects) if subjects else 0
+
+    if student:
+        course_data = find_by_column(conn, "COURSES", "course_id", student[2])
+        course_name = course_data[1] if course_data else "Unknown"
+        year_level = student[3]
+        account_status = student[7]
+
     banner_outer = tk.Frame(parent, bg=CARD_BORDER)
     banner_outer.pack(fill="x", padx=24, pady=(24, 16))
     banner = tk.Frame(banner_outer, bg=NAV_BG)
     banner.pack(padx=1, pady=1, fill="both", expand=True)
-    
+
     banner_pad = tk.Frame(banner, bg=NAV_BG)
-    banner_pad.pack(fill="x", padx=32, pady=32)
-    
-    # Avatar Circle
+    banner_pad.pack(fill="x", padx=32, pady=30)
+
     avatar_bg = tk.Frame(banner_pad, bg=WHITE, width=100, height=100)
     avatar_bg.pack(side="left", padx=(0, 24))
     avatar_bg.pack_propagate(False)
-    # inside grey circle
     avatar_inner = tk.Frame(avatar_bg, bg="#a0aab8", width=90, height=90)
     avatar_inner.place(relx=0.5, rely=0.5, anchor="center")
-    avatar_inner.pack_propagate(False)
     tk.Label(avatar_inner, text="👤", font=("Segoe UI Emoji", 48), fg=WHITE, bg="#a0aab8").place(relx=0.5, rely=0.5, anchor="center")
-    
+
     text_f = tk.Frame(banner_pad, bg=NAV_BG)
     text_f.pack(side="left", fill="y", pady=6)
-    tk.Label(text_f, text="", font=("Segoe UI", 24), fg=WHITE, bg=NAV_BG).pack(anchor="w")
-    tk.Label(text_f, text="", font=("Segoe UI", 12), fg=WHITE, bg=NAV_BG).pack(anchor="w", pady=(4,0))
-    tk.Label(text_f, text="", font=("Segoe UI", 10), fg="#aab4c8", bg=NAV_BG).pack(anchor="w", pady=(4,0))
-    
-    
-    # ── Grid Layout ──
+    tk.Label(text_f, text=student_name, font=("Segoe UI", 24, "bold"), fg=WHITE, bg=NAV_BG).pack(anchor="w")
+    tk.Label(text_f, text=f"{course_name} | Year {year_level}", font=("Segoe UI", 12), fg=WHITE, bg=NAV_BG).pack(anchor="w", pady=(4, 0))
+    tk.Label(text_f, text=f"Status: {account_status}", font=("Segoe UI", 10), fg="#aab4c8", bg=NAV_BG).pack(anchor="w", pady=(4, 0))
+
     cols = tk.Frame(parent, bg=CONTENT_BG)
     cols.pack(fill="both", expand=True, padx=24, pady=(0, 24))
-    
-    # ── Left: Schedule ──
+
     left_col = tk.Frame(cols, bg=CARD_BORDER, width=420)
     left_col.pack(side="left", fill="y", padx=(0, 16))
     left_col.pack_propagate(False)
-    
+
     left_inner = tk.Frame(left_col, bg=CARD_BG)
     left_inner.pack(padx=1, pady=1, fill="both", expand=True)
-    
-    sched_hdr = tk.Frame(left_inner, bg=CARD_BG)
-    sched_hdr.pack(fill="x", padx=24, pady=24)
-    tk.Label(sched_hdr, text="Today's Schedule", font=("Segoe UI", 11, "bold"), fg=NAV_BG, bg=CARD_BG).pack(side="left")
-    tk.Label(sched_hdr, text="Monday, May 18", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=CARD_BG).pack(side="right")
-    
-    tk.Frame(left_inner, bg=CARD_BORDER, height=1).pack(fill="x", padx=24)
-    
-    timeline = tk.Frame(left_inner, bg=CARD_BG)
-    timeline.pack(fill="both", expand=True, padx=24, pady=24)
-    
-    def _timeline_item(p, time_val, title, type_badge, room, current=False, last=False, advisor=None):
-        r = tk.Frame(p, bg=CARD_BG)
-        r.pack(fill="x", pady=0)
-        
-        # Left bar with dot
-        bar = tk.Frame(r, bg=CARD_BG, width=20)
-        bar.pack(side="left", fill="y")
-        bar.pack_propagate(False)
-        
-        dot_col = NAV_BG if current else "#cbd5e1"
-        dot = tk.Frame(bar, bg=dot_col, width=10, height=10)
-        dot.pack(pady=4)
-        if not last:
-            line = tk.Frame(bar, bg="#e2e8f0", width=2)
-            line.pack(fill="y", expand=True)
-            
-        content = tk.Frame(r, bg=CARD_BG)
-        content.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=(0, 24))
-        
-        top = tk.Frame(content, bg=CARD_BG)
-        top.pack(fill="x")
-        tk.Label(top, text=title, font=("Segoe UI", 10, "bold" if current else "normal"), fg=TEXT_PRIMARY if current else TEXT_MUTED, bg=CARD_BG).pack(side="left")
-        if type_badge:
-            tk.Label(top, text=type_badge, font=("Segoe UI", 7), fg="#4a6fa5", bg="#f1f5f9", padx=4).pack(side="left", padx=8)
-            
-        btm = tk.Frame(content, bg=CARD_BG)
-        btm.pack(fill="x", pady=(4, 0))
-        t_col = NAV_BG if current else TEXT_MUTED
-        t_txt = f"{time_val} (Current)" if current else time_val
-        tk.Label(btm, text=f"🕒 {t_txt}", font=("Segoe UI", 8, "bold" if current else "normal"), fg=t_col, bg=CARD_BG).pack(side="left")
-        
-        loc_str = f"📍 {room}" if room else f"👤 {advisor}"
-        tk.Label(btm, text=loc_str, font=("Segoe UI", 8), fg=TEXT_MUTED, bg=CARD_BG).pack(side="left", padx=(12, 0))
 
-    # No data — will be populated by database
-    pass
+    tk.Label(left_inner, text="Today's Schedule", font=("Segoe UI", 12, "bold"), fg=NAV_BG, bg=CARD_BG).pack(anchor="w", padx=24, pady=(24, 12))
+    if subjects:
+        for index, subj in enumerate(subjects[:4]):
+            item = tk.Frame(left_inner, bg=CARD_BG)
+            item.pack(fill="x", padx=24, pady=(0, 14))
+            dot = tk.Frame(item, bg=NAV_BG if index == 0 else "#cbd5e1", width=10, height=10)
+            dot.pack(side="left", pady=4)
+            dot.pack_propagate(False)
+            content = tk.Frame(item, bg=CARD_BG)
+            content.pack(side="left", fill="x", expand=True, padx=(12, 0))
+            tk.Label(content, text=subj[5], font=("Segoe UI", 10, "bold"), fg=TEXT_PRIMARY, bg=CARD_BG).pack(anchor="w")
+            tk.Label(content, text=f"{subj[8]} • {subj[9]} - {subj[10]}", font=("Segoe UI", 8), fg=TEXT_MUTED, bg=CARD_BG).pack(anchor="w")
+    else:
+        tk.Label(left_inner, text="No enrolled subjects found.", font=("Segoe UI", 10), fg=TEXT_MUTED, bg=CARD_BG).pack(anchor="w", padx=24, pady=(0, 24))
 
-    # ── Right: Tiles ──
     right_col = tk.Frame(cols, bg=CONTENT_BG)
     right_col.pack(side="left", fill="both", expand=True)
-    
-    # Quotes
+
     quotes_outer = tk.Frame(right_col, bg=CARD_BORDER)
     quotes_outer.pack(fill="x", pady=(0, 16))
     quotes = tk.Frame(quotes_outer, bg=NAV_BG)
     quotes.pack(padx=1, pady=1, fill="both", expand=True)
-    tk.Label(quotes, text="Motivational Quote", font=("Segoe UI", 14), fg=WHITE, bg=NAV_BG).pack(anchor="w", padx=24, pady=(24, 16))
-    tk.Label(quotes, text='""', font=("Segoe UI", 20), fg=WHITE, bg=NAV_BG).pack(anchor="w", padx=24, pady=(0, 16))
-    tk.Label(quotes, text="", font=("Segoe UI", 10), fg="#aab4c8", bg=NAV_BG).pack(anchor="w", padx=24, pady=(0, 24))
+    tk.Label(quotes, text="Academic Snapshot", font=("Segoe UI", 14), fg=WHITE, bg=NAV_BG).pack(anchor="w", padx=24, pady=(24, 8))
+    tk.Label(quotes, text=f"GWA: {gwa_value}", font=("Segoe UI", 22, "bold"), fg=WHITE, bg=NAV_BG).pack(anchor="w", padx=24)
+    tk.Label(quotes, text=f"Total credits earned: {credits_value}", font=("Segoe UI", 10), fg="#aab4c8", bg=NAV_BG).pack(anchor="w", padx=24, pady=(0, 24))
 
-    # Two small cards row
     row2 = tk.Frame(right_col, bg=CONTENT_BG)
     row2.pack(fill="x", pady=(0, 16))
-    
+
     def _navy_stat(parent, icon, title, val):
         outer = tk.Frame(parent, bg=CARD_BORDER)
         outer.pack(side="left", fill="both", expand=True, padx=(0, 16))
         c = tk.Frame(outer, bg=NAV_BG)
         c.pack(padx=1, pady=1, fill="both", expand=True)
-        
         c_in = tk.Frame(c, bg=NAV_BG)
         c_in.pack(expand=True, padx=24, pady=24)
-        
-        tk.Label(c_in, text=icon, font=("Segoe UI", 32), fg=WHITE, bg=NAV_BG).pack(side="left", padx=(0, 24))
+        tk.Label(c_in, text=icon, font=("Segoe UI", 32), fg=WHITE, bg=NAV_BG).pack(side="left", padx=(0, 18))
         r = tk.Frame(c_in, bg=NAV_BG)
         r.pack(side="left")
         tk.Label(r, text=title, font=("Segoe UI", 11), fg="#aab4c8", bg=NAV_BG).pack(anchor="w")
-        tk.Label(r, text=val, font=("Segoe UI", 20), fg=WHITE, bg=NAV_BG).pack(anchor="w")
-        return outer
-        
-    _navy_stat(row2, "★", "Grade", "")
-    att = _navy_stat(row2, "👤", "Attendance", "")
-    att.pack_configure(padx=0) # remove right margin on second card
-    
-    # Third small card row
+        tk.Label(r, text=val, font=("Segoe UI", 18, "bold"), fg=WHITE, bg=NAV_BG).pack(anchor="w")
+
+    _navy_stat(row2, "★", "Grade", gwa_value)
+    _navy_stat(row2, "👤", "Attendance", "Active")
+
     row3 = tk.Frame(right_col, bg=CONTENT_BG)
     row3.pack(fill="x")
-    
-    c3 = _navy_stat(row3, "≡", "Credits Earned", "")
-    c3.pack_configure(side="left", fill="both", expand=True, padx=0)
+    _navy_stat(row3, "≡", "Credits Earned", str(credits_value))
 
 
 
 # ── Main entry ─────────────────────────────────────────────────────────────────
-def open_dashboard_window(window, conn, on_logout=None):
+def open_dashboard_window(window, conn, on_logout=None, student_id=None):
     win = tk.Toplevel(window)
     win.title(f"Student Dashboard — EDU SIS")
     
@@ -359,19 +332,19 @@ def open_dashboard_window(window, conn, on_logout=None):
 
         if tab_name == "Dashboard":
             title_lbl.config(text="Dashboard")
-            build_dashboard_tab(main_frame, switch_tab)
+            build_dashboard_tab(main_frame, switch_tab, conn, student_id)
         elif tab_name == "Grades":
             title_lbl.config(text="Grades")
-            build_grades_tab(main_frame, switch_tab)
+            build_grades_tab(main_frame, switch_tab, conn, student_id)
         elif tab_name == "Subjects":
             title_lbl.config(text="Enrolled Subjects")
-            build_subjects_tab(main_frame, switch_tab)
+            build_subjects_tab(main_frame, switch_tab, conn, student_id)
         elif tab_name == "Announcements":
             title_lbl.config(text="Announcements")
-            build_announcements_tab(main_frame, switch_tab)
+            build_announcements_tab(main_frame, switch_tab, conn, student_id)
         elif tab_name == "Events":
             title_lbl.config(text="Events")
-            build_events_tab(main_frame, switch_tab)
+            build_events_tab(main_frame, switch_tab, conn, student_id)
         elif tab_name == "Settings":
             title_lbl.config(text="Settings")
             build_settings_tab(main_frame, switch_tab)

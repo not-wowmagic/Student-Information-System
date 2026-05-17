@@ -53,7 +53,7 @@ def build_announcements_list_tab(parent, switch_cb, conn):
         if dept_id is None:
             dept_name = "All Departments"
         else:
-            dept_data = find_by_column(conn, "DEPARTMENT", "department_id", dept_id)
+            dept_data = find_by_column(conn, "DEPARTMENT", "id", dept_id)
             dept_name = dept_data[1] if dept_data else "Unknown"
 
         # Truncate long content for preview
